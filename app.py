@@ -26,14 +26,12 @@ st.markdown(f'''
 ''', unsafe_allow_html=True)
 
 # ================= LOAD DATA =================
-@st.cache_data(ttl=60) # Inasoma upya kila baada ya dakika 1
+@st.cache_data(ttl=60)
 def load_data():
     try:
-        # Hapa tunasoma data.json (tutaipanga upya baadaye)
         with open("data.json", "r") as f:
             data = json.load(f)
             
-        # Badilisha JSON kuwa DataFrame ya kawaida
         all_rows = []
         for stock in data:
             sym = stock['symbol']
@@ -44,10 +42,11 @@ def load_data():
                     'close': day['close'], 'volume': day.get('volume', 0)
                 })
         df = pd.DataFrame(all_rows)
-        
-        # Kwasababu JSON yetu haina indicators, tunahesabu hapa kwa haraka
         df = df.sort_values(['symbol', 'date'])
-        df['rsi_14'] = 50.0 # Dummy kwa sasa (tutairekebisha kwenye pipeline)
+        
+        # Tunatengeneza RSI ya uongo (Dummy) kwa sasa kwa kuwa data.json haina
+        # Tutairekebisha kwenye hatua ya mwisho ya pipeline
+        df['rsi_14'] = 50.0 
         return df
     except Exception as e:
         return pd.DataFrame()
@@ -55,7 +54,7 @@ def load_data():
 df_master = load_data()
 
 if df_master.empty:
-    st.error("Data haipo au ina hitilafu. Tafadhali hakikisha 'data.json' ipo GitHub.")
+    st.error("Data haipo au ina hitilafu.")
     st.stop()
 
 def resample(d, kind):
@@ -97,7 +96,11 @@ r = resample(d, tf_map[timeframe])
 r["lab"] = r["date"].dt.strftime("%d %b %y")
 
 # ================= TENGENEZA CHART =================
-fig = make_subplots(rows=3, cols=1, shared_xaxes=True, vertical_spacing=0.03, row_heights=[0.6, 0.2, 0.2])
+# Tumeongeza urefu kuwa 900, na kupanga row_heights ipasavyo
+fig = make_subplots(
+    rows=3, cols=1, shared_xaxes=True, vertical_spacing=0.03, 
+    row_heights=[0.6, 0.15, 0.25] # Price 60%, Vol 15%, RSI 25%
+)
 
 if chart_type == "Candlestick":
     fig.add_trace(go.Candlestick(x=r["lab"], open=r["open"], high=r["high"], low=r["low"], close=r["close"],
@@ -113,18 +116,22 @@ elif chart_type == "Area":
 fig.add_trace(go.Bar(x=r["lab"], y=r["volume"], marker_color=np.where(r["close"] >= r["open"], UP_A, DOWN_A), name="Volume"), row=2, col=1)
 
 # RSI
-fig.add_trace(go.Scatter(x=r["lab"], y=r["rsi_14"], mode="lines", line=dict(color="#e040fb", width=1.5), name="RSI"), row=3, col=1)
-fig.add_trace(go.Scatter(x=[r["lab"].iloc[0], r["lab"].iloc[-1]], y=[70, 70], mode="lines", line=dict(color="rgba(255, 255, 255, 0.2)", width=1, dash="dash"), showlegend=False), row=3, col=1)
-fig.add_trace(go.Scatter(x=[r["lab"].iloc[0], r["lab"].iloc[-1]], y=[30, 30], mode="lines", line=dict(color="rgba(255, 255, 255, 0.2)", width=1, dash="dash"), showlegend=False), row=3, col=1)
+fig.add_trace(go.Scatter(x=r["lab"], y=r["rsi_14"], mode="lines", line=dict(color="#e040fb", width=2), name="RSI"), row=3, col=1)
+# Mistari ya 70 na 30
+fig.add_trace(go.Scatter(x=[r["lab"].iloc[0], r["lab"].iloc[-1]], y=[70, 70], mode="lines", line=dict(color="rgba(255, 255, 255, 0.3)", width=1, dash="dash"), showlegend=False), row=3, col=1)
+fig.add_trace(go.Scatter(x=[r["lab"].iloc[0], r["lab"].iloc[-1]], y=[30, 30], mode="lines", line=dict(color="rgba(255, 255, 255, 0.3)", width=1, dash="dash"), showlegend=False), row=3, col=1)
+# Mstari wa kati (50)
+fig.add_trace(go.Scatter(x=[r["lab"].iloc[0], r["lab"].iloc[-1]], y=[50, 50], mode="lines", line=dict(color="rgba(255, 255, 255, 0.1)", width=1), showlegend=False), row=3, col=1)
 
 # Layout
 fig.update_xaxes(type="category", categoryorder="array", categoryarray=list(r["lab"]), rangeslider_visible=False, gridcolor=GRID, zerolinecolor=GRID)
 fig.update_yaxes(side="right", tickformat=",.0f", gridcolor=GRID, row=1, col=1)
 fig.update_yaxes(side="right", tickformat=".2s", gridcolor=GRID, row=2, col=1)
-fig.update_yaxes(side="right", tickvals=[30, 50, 70], gridcolor=GRID, row=3, col=1)
+# Tumerudisha range ya RSI kuwa 0 hadi 100 ili ionekane vizuri na isibanwe
+fig.update_yaxes(side="right", range=[0, 100], tickvals=[30, 50, 70], gridcolor=GRID, row=3, col=1)
 
 fig.update_layout(
-    paper_bgcolor=BG, plot_bgcolor=BG, font=dict(color=TXT), height=700,
+    paper_bgcolor=BG, plot_bgcolor=BG, font=dict(color=TXT), height=900, # Urefu umeongezwa
     dragmode="pan", hovermode="x unified", showlegend=False,
     margin=dict(l=10, r=70, t=30, b=30)
 )
