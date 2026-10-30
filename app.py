@@ -13,27 +13,21 @@ UP_A, DOWN_A = "rgba(38,166,154,0.5)", "rgba(239,83,80,0.5)"
 BG, GRID, TXT = "#131722", "#1e222d", "#d1d4dc"
 LINE_COLOR = "#2962ff"
 
-# Hapa tumetumia link za uhakika kwa nembo maarufu, na clearbit kwa nyingine
+# Hapa tumetumia logo.dev ambayo inaruhusu kupakiwa kirahisi
 COMPANY_DATA = {
-    "CRDB": {"name": "CRDB Bank Plc", "logo": "https://upload.wikimedia.org/wikipedia/en/thumb/8/8a/CRDB_Bank_logo.svg/200px-CRDB_Bank_logo.svg.png"},
-    "NMB": {"name": "NMB Bank Plc", "logo": "https://upload.wikimedia.org/wikipedia/en/thumb/4/44/NMB_Bank_logo.svg/200px-NMB_Bank_logo.svg.png"},
-    "VODA": {"name": "Vodacom Tanzania", "logo": "https://upload.wikimedia.org/wikipedia/commons/thumb/5/5d/Vodacom_Logo.svg/200px-Vodacom_Logo.svg.png"},
-    "TBL": {"name": "Tanzania Breweries", "logo": "https://upload.wikimedia.org/wikipedia/en/thumb/1/1c/Tanzania_Breweries_Limited_logo.png/200px-Tanzania_Breweries_Limited_logo.png"},
-    "KCB": {"name": "KCB Bank (Kenya)", "logo": "https://upload.wikimedia.org/wikipedia/commons/thumb/4/4a/KCB_Bank_Logo.svg/200px-KCB_Bank_Logo.svg.png"},
-    "TPCC": {"name": "Tanzania Portland Cement", "logo": "https://twigacement.com/wp-content/uploads/2019/06/Twiga-Cement-Logo.png"},
-    "TOL": {"name": "TOL Gases Ltd", "logo": "https://logo.clearbit.com/tol.co.tz"},
-    "TCC": {"name": "Tanzania Cigarette Co", "logo": "https://logo.clearbit.com/tcc.co.tz"},
-    "DCB": {"name": "DCB Commercial Bank", "logo": "https://logo.clearbit.com/dcbbank.co.tz"},
-    "SWIS": {"name": "Swissport Tanzania", "logo": "https://logo.clearbit.com/swissport.com"},
-    "NICO": {"name": "National Investment Co", "logo": "https://logo.clearbit.com/nico.co.tz"},
+    "CRDB": {"name": "CRDB Bank Plc", "domain": "crdbbank.co.tz"},
+    "NMB": {"name": "NMB Bank Plc", "domain": "nmbbank.co.tz"},
+    "VODA": {"name": "Vodacom Tanzania", "domain": "vodacom.co.tz"},
+    "TBL": {"name": "Tanzania Breweries", "domain": "tbl.co.tz"},
+    "KCB": {"name": "KCB Bank (Kenya)", "domain": "kcbgroup.com"},
+    "TPCC": {"name": "Tanzania Portland Cement", "domain": "twigacement.com"},
+    "TOL": {"name": "TOL Gases Ltd", "domain": "tol.co.tz"},
+    "TCC": {"name": "Tanzania Cigarette Co", "domain": "tcc.co.tz"},
+    "DCB": {"name": "DCB Commercial Bank", "domain": "dcbbank.co.tz"},
+    "SWIS": {"name": "Swissport Tanzania", "domain": "swissport.com"},
+    "NICO": {"name": "National Investment Co", "domain": "nico.co.tz"},
+    "AFRIPRISE": {"name": "Afriprise Investment", "domain": ""},
 }
-
-def get_logo_html(sym, logo_url, size=50):
-    """Kama nembo haipo, tengeneza 'Avatar' yenye herufi"""
-    if logo_url:
-        return f'<img src="{logo_url}" style="width:{size}px; height:{size}px; object-fit:contain; margin-right:15px; border-radius:8px;" onerror="this.style.display=\'none\'; this.nextElementSibling.style.display=\'flex\';"> <div style="display:none; width:{size}px; height:{size}px; background-color:#2962ff; color:white; align-items:center; justify-content:center; font-size:{int(size/2)}px; font-weight:bold; border-radius:8px; margin-right:15px;">{sym[:3]}</div>'
-    else:
-        return f'<div style="width:{size}px; height:{size}px; background-color:#2962ff; color:white; display:flex; align-items:center; justify-content:center; font-size:{int(size/2)}px; font-weight:bold; border-radius:8px; margin-right:15px;">{sym[:3]}</div>'
 
 st.markdown(f'''
     <style>
@@ -95,12 +89,13 @@ symbols = df_master['symbol'].unique().tolist()
 
 sym_options = []
 for s in sorted(symbols):
-    if s in COMPANY_DATA:
+    if s in COMPANY_DATA and COMPANY_DATA[s]["domain"] != "":
         name = COMPANY_DATA[s]["name"]
-        logo = COMPANY_DATA[s].get("logo", f"https://logo.clearbit.com/{name.replace(' ', '').lower()}.com")
+        # Tunatumia logo.dev ambayo ni salama
+        logo = f"https://img.logo.dev/{COMPANY_DATA[s]['domain']}?token=pk_2Z7XecBchSB7U8OxYamQIBoDH4F_7huod8eqNPzz6W5hgu1Uz" 
     else:
-        name = s 
-        logo = None # Itatengeneza Avatar
+        name = COMPANY_DATA[s]["name"] if s in COMPANY_DATA else s 
+        logo = None # Itatengeneza Avatar ya bluu
     sym_options.append({"symbol": s, "name": name, "logo": logo})
 
 st.sidebar.markdown("<h4 style='color:#00f2fe; font-size:16px; margin-bottom:10px;'>WATCHLIST</h4>", unsafe_allow_html=True)
@@ -116,31 +111,27 @@ selected_sym = selected_item['symbol']
 selected_name = selected_item['name']
 selected_logo = selected_item['logo']
 
-logo_html_sidebar = get_logo_html(selected_sym, selected_logo, size=40)
+# ================= MAIN PAGE: LOGO NA JINA =================
+# Hapa Streamlit inatengeneza safu (columns) ili nembo isionekane vibaya kama haipo
+col_logo, col_text = st.columns([1, 10]) 
 
-st.sidebar.markdown(f"""
-<div style="display:flex; align-items:center; background-color:#151a21; padding:10px; border-radius:8px; margin-top:10px; border:1px solid #2a323d;">
-    {logo_html_sidebar}
-    <div>
-        <div style="color:white; font-weight:bold; font-size:16px;">{selected_sym}</div>
-        <div style="color:#8b949e; font-size:12px;">{selected_name}</div>
-    </div>
-</div>
-""", unsafe_allow_html=True)
+with col_logo:
+    if selected_logo:
+        try:
+            st.image(selected_logo, width=60)
+        except:
+            # Kama picha imegoma kupakia (kama Afriprise), weka Avatar ya bluu
+            st.markdown(f"<div style='width:60px; height:60px; background-color:#2962ff; color:white; display:flex; align-items:center; justify-content:center; font-size:20px; font-weight:bold; border-radius:8px;'>{selected_sym[:3]}</div>", unsafe_allow_html=True)
+    else:
+        # Avatar ya bluu kwa wale wasio na domain/nembo
+        st.markdown(f"<div style='width:60px; height:60px; background-color:#2962ff; color:white; display:flex; align-items:center; justify-content:center; font-size:20px; font-weight:bold; border-radius:8px;'>{selected_sym[:3]}</div>", unsafe_allow_html=True)
 
-# ================= MAIN PAGE =================
-logo_html_main = get_logo_html(selected_sym, selected_logo, size=50)
+with col_text:
+    st.markdown(f"<h2 style='margin:0; color:white;'>{selected_sym}</h2>", unsafe_allow_html=True)
+    st.markdown(f"<span style='color:#8b949e; font-size:16px;'>{selected_name}</span>", unsafe_allow_html=True)
 
-st.markdown(f"""
-<div style="display:flex; align-items:center; margin-bottom: 20px;">
-    {logo_html_main}
-    <div>
-        <h2 style="margin:0; color:white;">{selected_sym}</h2>
-        <span style="color:#8b949e; font-size:16px;">{selected_name}</span>
-    </div>
-</div>
-""", unsafe_allow_html=True)
-
+# ================= CONTROLS =================
+st.markdown("<br>", unsafe_allow_html=True)
 col1, col2, col3 = st.columns(3)
 with col1:
     timeframe = st.selectbox("**Timeframe:**", ["Daily", "Weekly", "Monthly", "3 Months", "6 Months", "1 Year"])
