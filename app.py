@@ -13,7 +13,6 @@ UP_A, DOWN_A = "rgba(38,166,154,0.5)", "rgba(239,83,80,0.5)"
 BG, GRID, TXT = "#131722", "#1e222d", "#d1d4dc"
 LINE_COLOR = "#2962ff"
 
-# Hapa tumetumia logo.dev ambayo inaruhusu kupakiwa kirahisi
 COMPANY_DATA = {
     "CRDB": {"name": "CRDB Bank Plc", "domain": "crdbbank.co.tz"},
     "NMB": {"name": "NMB Bank Plc", "domain": "nmbbank.co.tz"},
@@ -26,14 +25,22 @@ COMPANY_DATA = {
     "DCB": {"name": "DCB Commercial Bank", "domain": "dcbbank.co.tz"},
     "SWIS": {"name": "Swissport Tanzania", "domain": "swissport.com"},
     "NICO": {"name": "National Investment Co", "domain": "nico.co.tz"},
-    "AFRIPRISE": {"name": "Afriprise Investment", "domain": ""},
 }
+
+def get_logo_html(sym, domain, size=50):
+    if domain:
+        logo_url = f"https://img.logo.dev/{domain}?token=pk_2Z7XecBchSB7U8OxYamQIBoDH4F_7huod8eqNPzz6W5hgu1Uz"
+        return f'<img src="{logo_url}" style="width:{size}px; height:{size}px; object-fit:contain; margin-right:15px; border-radius:8px;" onerror="this.style.display=\'none\'; this.nextElementSibling.style.display=\'flex\';"> <div style="display:none; width:{size}px; height:{size}px; background-color:#2962ff; color:white; align-items:center; justify-content:center; font-size:{int(size/2)}px; font-weight:bold; border-radius:8px; margin-right:15px;">{sym[:3]}</div>'
+    else:
+        return f'<div style="width:{size}px; height:{size}px; background-color:#2962ff; color:white; display:flex; align-items:center; justify-content:center; font-size:{int(size/2)}px; font-weight:bold; border-radius:8px; margin-right:15px;">{sym[:3]}</div>'
 
 st.markdown(f'''
     <style>
     .stApp {{ background-color: {BG}; color: {TXT}; }}
     .css-1d391kg {{ background-color: #1e222d; }}
     .stRadio label {{ color: {TXT} !important; }}
+    /* CSS ya Table ya Screener */
+    .dataframe {{ background-color: #151a21 !important; color: white !important; }}
     </style>
 ''', unsafe_allow_html=True)
 
@@ -65,125 +72,121 @@ if df_master.empty:
     st.error("Data haipo au ina hitilafu. Tafadhali hakikisha 'data.json' ipo GitHub.")
     st.stop()
 
-def resample(d, kind):
-    if kind == "D": return d.copy().reset_index(drop=True)
-    if kind == "W": key = d["date"].dt.to_period("W")
-    elif kind == "M": key = d["date"].dt.to_period("M")
-    elif kind == "3M": key = d["date"].dt.to_period("Q")
-    elif kind == "6M": key = d["date"].dt.year.astype(str) + "-H" + np.where(d["date"].dt.quarter <= 2, "1", "2")
-    else: key = d["date"].dt.year
-
-    g = d.groupby(key)
-    out = pd.DataFrame({
-        "date": g["date"].max(), "open": g["open"].first(), "high": g["high"].max(),
-        "low": g["low"].min(), "close": g["close"].last(), "volume": g["volume"].sum(),
-        "rsi_14": g["rsi_14"].last()
-    })
-    return out.reset_index(drop=True).sort_values("date").reset_index(drop=True)
-
-# ================= SIDEBAR: WATCHLIST =================
+# ================= SIDEBAR =================
 st.sidebar.title("📈 BXStockView")
 st.sidebar.markdown("---")
 
-symbols = df_master['symbol'].unique().tolist()
+# HAPA: Tumeongeza chaguo la Screener
+page = st.sidebar.radio("**Menyu:**", ["📊 Chart Analysis", "🔎 Market Screener"])
 
-sym_options = []
-for s in sorted(symbols):
-    if s in COMPANY_DATA and COMPANY_DATA[s]["domain"] != "":
-        name = COMPANY_DATA[s]["name"]
-        # Tunatumia logo.dev ambayo ni salama
-        logo = f"https://img.logo.dev/{COMPANY_DATA[s]['domain']}?token=pk_2Z7XecBchSB7U8OxYamQIBoDH4F_7huod8eqNPzz6W5hgu1Uz" 
+if page == "📊 Chart Analysis":
+    # ================= CHART ANALYSIS PAGE =================
+    symbols = df_master['symbol'].unique().tolist()
+    sym_options = [{"symbol": s, "name": COMPANY_DATA.get(s, {}).get("name", s)} for s in sorted(symbols)]
+
+    selected_idx = st.sidebar.selectbox("Chagua Hisa:", range(len(sym_options)), format_func=lambda x: f"{sym_options[x]['symbol']} - {sym_options[x]['name']}")
+    
+    selected_sym = sym_options[selected_idx]['symbol']
+    selected_name = sym_options[selected_idx]['name']
+    domain = COMPANY_DATA.get(selected_sym, {}).get("domain", "")
+
+    logo_html_main = get_logo_html(selected_sym, domain, size=50)
+
+    st.markdown(f"""
+    <div style="display:flex; align-items:center; margin-bottom: 20px;">
+        {logo_html_main}
+        <div>
+            <h2 style="margin:0; color:white;">{selected_sym}</h2>
+            <span style="color:#8b949e; font-size:16px;">{selected_name}</span>
+        </div>
+    </div>
+    """, unsafe_allow_html=True)
+
+    col1, col2, col3 = st.columns(3)
+    with col1: timeframe = st.selectbox("**Timeframe:**", ["Daily", "Weekly", "Monthly"])
+    with col2: chart_type = st.selectbox("**Chart Type:**", ["Candlestick", "Line", "Area"])
+    with col3: history_range = st.selectbox("**History:**", ["Zote", "Mwaka 1", "Miezi 6"])
+
+    d = df_master[df_master["symbol"] == selected_sym].sort_values("date")
+    if history_range == "Mwaka 1": d = d.tail(252)
+    elif history_range == "Miezi 6": d = d.tail(126)
+
+    # Resample logic
+    def resample(d, kind):
+        if kind == "Daily": return d.copy().reset_index(drop=True)
+        if kind == "Weekly": key = d["date"].dt.to_period("W")
+        else: key = d["date"].dt.to_period("M")
+        g = d.groupby(key)
+        out = pd.DataFrame({"date": g["date"].max(), "open": g["open"].first(), "high": g["high"].max(), "low": g["low"].min(), "close": g["close"].last(), "volume": g["volume"].sum(), "rsi_14": g["rsi_14"].last()})
+        return out.reset_index(drop=True).sort_values("date").reset_index(drop=True)
+
+    r = resample(d, timeframe)
+    r["lab"] = r["date"].dt.strftime("%d %b %y")
+
+    fig = make_subplots(rows=3, cols=1, shared_xaxes=True, vertical_spacing=0.03, row_heights=[0.6, 0.15, 0.25])
+    if chart_type == "Candlestick":
+        fig.add_trace(go.Candlestick(x=r["lab"], open=r["open"], high=r["high"], low=r["low"], close=r["close"], increasing_line_color=UP, decreasing_line_color=DOWN), row=1, col=1)
+    elif chart_type == "Line":
+        fig.add_trace(go.Scatter(x=r["lab"], y=r["close"], mode="lines", line=dict(color=LINE_COLOR, width=2)), row=1, col=1)
     else:
-        name = COMPANY_DATA[s]["name"] if s in COMPANY_DATA else s 
-        logo = None # Itatengeneza Avatar ya bluu
-    sym_options.append({"symbol": s, "name": name, "logo": logo})
+        fig.add_trace(go.Scatter(x=r["lab"], y=r["close"], mode="lines", fill="tozeroy", line=dict(color=LINE_COLOR, width=2)), row=1, col=1)
 
-st.sidebar.markdown("<h4 style='color:#00f2fe; font-size:16px; margin-bottom:10px;'>WATCHLIST</h4>", unsafe_allow_html=True)
+    fig.add_trace(go.Bar(x=r["lab"], y=r["volume"], marker_color=np.where(r["close"] >= r["open"], UP_A, DOWN_A), name="Volume"), row=2, col=1)
+    fig.add_trace(go.Scatter(x=r["lab"], y=r["rsi_14"], mode="lines", line=dict(color="#e040fb", width=2), name="RSI"), row=3, col=1)
+    fig.add_hline(y=70, line_dash="dash", line_color="rgba(255, 255, 255, 0.3)", row=3, col=1)
+    fig.add_hline(y=30, line_dash="dash", line_color="rgba(255, 255, 255, 0.3)", row=3, col=1)
 
-selected_idx = st.sidebar.selectbox(
-    "Chagua Hisa:",
-    range(len(sym_options)),
-    format_func=lambda x: f"{sym_options[x]['symbol']} - {sym_options[x]['name']}"
-)
+    fig.update_xaxes(type="category", rangeslider_visible=False, gridcolor=GRID)
+    fig.update_yaxes(side="right", gridcolor=GRID)
+    fig.update_layout(paper_bgcolor=BG, plot_bgcolor=BG, font=dict(color=TXT), height=800, margin=dict(l=10, r=70, t=30, b=30))
+    st.plotly_chart(fig, use_container_width=True, config={"scrollZoom": True, "displaylogo": False})
 
-selected_item = sym_options[selected_idx]
-selected_sym = selected_item['symbol']
-selected_name = selected_item['name']
-selected_logo = selected_item['logo']
+elif page == "🔎 Market Screener":
+    # ================= SCREENER PAGE =================
+    st.markdown("<h2 style='color:white;'>Market Screener</h2>", unsafe_allow_html=True)
+    st.markdown("<p style='color:#8b949e;'>Chuja hisa kulingana na vigezo vya kiufundi (Technical Analysis).</p>", unsafe_allow_html=True)
 
-# ================= MAIN PAGE: LOGO NA JINA =================
-# Hapa Streamlit inatengeneza safu (columns) ili nembo isionekane vibaya kama haipo
-col_logo, col_text = st.columns([1, 10]) 
+    # Tunachukua data ya siku ya mwisho kwa kila hisa
+    latest_data = df_master.sort_values('date').groupby('symbol').tail(1)
 
-with col_logo:
-    if selected_logo:
-        try:
-            st.image(selected_logo, width=60)
-        except:
-            # Kama picha imegoma kupakia (kama Afriprise), weka Avatar ya bluu
-            st.markdown(f"<div style='width:60px; height:60px; background-color:#2962ff; color:white; display:flex; align-items:center; justify-content:center; font-size:20px; font-weight:bold; border-radius:8px;'>{selected_sym[:3]}</div>", unsafe_allow_html=True)
-    else:
-        # Avatar ya bluu kwa wale wasio na domain/nembo
-        st.markdown(f"<div style='width:60px; height:60px; background-color:#2962ff; color:white; display:flex; align-items:center; justify-content:center; font-size:20px; font-weight:bold; border-radius:8px;'>{selected_sym[:3]}</div>", unsafe_allow_html=True)
+    # Vigezo vya Kuchuja (Filters)
+    col1, col2, col3 = st.columns(3)
+    with col1:
+        rsi_filter = st.selectbox("**RSI Signal:**", ["Zote", "Oversold (Chini ya 30)", "Overbought (Juu ya 70)", "Neutral (30-70)"])
+    with col2:
+        trend_filter = st.selectbox("**Mwenendo (Trend):**", ["Zote", "Zinazopanda (Bullish)", "Zinazoshuka (Bearish)"])
+    with col3:
+        min_vol = st.number_input("**Kiwango cha Chini cha Volume:**", min_value=0, value=0, step=10000)
 
-with col_text:
-    st.markdown(f"<h2 style='margin:0; color:white;'>{selected_sym}</h2>", unsafe_allow_html=True)
-    st.markdown(f"<span style='color:#8b949e; font-size:16px;'>{selected_name}</span>", unsafe_allow_html=True)
+    # Kuchuja data
+    filtered = latest_data.copy()
+    
+    if rsi_filter == "Oversold (Chini ya 30)":
+        filtered = filtered[filtered['rsi_14'] < 30]
+    elif rsi_filter == "Overbought (Juu ya 70)":
+        filtered = filtered[filtered['rsi_14'] > 70]
+    elif rsi_filter == "Neutral (30-70)":
+        filtered = filtered[(filtered['rsi_14'] >= 30) & (filtered['rsi_14'] <= 70)]
 
-# ================= CONTROLS =================
-st.markdown("<br>", unsafe_allow_html=True)
-col1, col2, col3 = st.columns(3)
-with col1:
-    timeframe = st.selectbox("**Timeframe:**", ["Daily", "Weekly", "Monthly", "3 Months", "6 Months", "1 Year"])
-with col2:
-    chart_type = st.selectbox("**Chart Type:**", ["Candlestick", "Line", "Area"])
-with col3:
-    history_range = st.selectbox("**History (Data za Nyuma):**", ["Zote (Tangu 2015)", "Mwaka 1 wa Mwisho", "Miezi 6 ya Mwisho"])
+    if trend_filter == "Zinazopanda (Bullish)":
+        filtered = filtered[filtered['change'] > 0]
+    elif trend_filter == "Zinazoshuka (Bearish)":
+        filtered = filtered[filtered['change'] < 0]
 
-# ================= FILTER DATA =================
-tf_map = {"Daily": "D", "Weekly": "W", "Monthly": "M", "3 Months": "3M", "6 Months": "6M", "1 Year": "1Y"}
-d = df_master[df_master["symbol"] == selected_sym].sort_values("date")
+    filtered = filtered[filtered['volume'] >= min_vol]
 
-if history_range == "Mwaka 1 wa Mwisho":
-    d = d.tail(252) 
-elif history_range == "Miezi 6 ya Mwisho":
-    d = d.tail(126)
+    # Kuandaa Jedwali
+    display_df = filtered[['symbol', 'close', 'change', 'pct', 'rsi_14', 'volume']].copy()
+    display_df.columns = ['Hisa (Symbol)', 'Bei ya Mwisho', 'Mabadiliko (TZS)', 'Mabadiliko (%)', 'RSI (14)', 'Volume']
+    
+    # Kupanga kwa kiasi cha mabadiliko (kushuka hadi kupanda)
+    display_df = display_df.sort_values('Mabadiliko (%)', ascending=False)
 
-r = resample(d, tf_map[timeframe])
-r["lab"] = r["date"].dt.strftime("%d %b %y")
-
-# ================= TENGENEZA CHART =================
-fig = make_subplots(
-    rows=3, cols=1, shared_xaxes=True, vertical_spacing=0.03, 
-    row_heights=[0.6, 0.15, 0.25] 
-)
-
-if chart_type == "Candlestick":
-    fig.add_trace(go.Candlestick(x=r["lab"], open=r["open"], high=r["high"], low=r["low"], close=r["close"],
-                                 increasing_line_color=UP, decreasing_line_color=DOWN,
-                                 increasing_fillcolor=UP, decreasing_fillcolor=DOWN, whiskerwidth=0), row=1, col=1)
-elif chart_type == "Line":
-    fig.add_trace(go.Scatter(x=r["lab"], y=r["close"], mode="lines", line=dict(color=LINE_COLOR, width=2)), row=1, col=1)
-elif chart_type == "Area":
-    fig.add_trace(go.Scatter(x=r["lab"], y=r["close"], mode="lines", fill="tozeroy",
-                             line=dict(color=LINE_COLOR, width=2), fillcolor="rgba(41, 98, 255, 0.2)"), row=1, col=1)
-
-fig.add_trace(go.Bar(x=r["lab"], y=r["volume"], marker_color=np.where(r["close"] >= r["open"], UP_A, DOWN_A), name="Volume"), row=2, col=1)
-
-fig.add_trace(go.Scatter(x=r["lab"], y=r["rsi_14"], mode="lines", line=dict(color="#e040fb", width=2), name="RSI"), row=3, col=1)
-fig.add_trace(go.Scatter(x=[r["lab"].iloc[0], r["lab"].iloc[-1]], y=[70, 70], mode="lines", line=dict(color="rgba(255, 255, 255, 0.3)", width=1, dash="dash"), showlegend=False), row=3, col=1)
-fig.add_trace(go.Scatter(x=[r["lab"].iloc[0], r["lab"].iloc[-1]], y=[30, 30], mode="lines", line=dict(color="rgba(255, 255, 255, 0.3)", width=1, dash="dash"), showlegend=False), row=3, col=1)
-fig.add_trace(go.Scatter(x=[r["lab"].iloc[0], r["lab"].iloc[-1]], y=[50, 50], mode="lines", line=dict(color="rgba(255, 255, 255, 0.1)", width=1), showlegend=False), row=3, col=1)
-
-fig.update_xaxes(type="category", categoryorder="array", categoryarray=list(r["lab"]), rangeslider_visible=False, gridcolor=GRID, zerolinecolor=GRID)
-fig.update_yaxes(side="right", tickformat=",.0f", gridcolor=GRID, row=1, col=1)
-fig.update_yaxes(side="right", tickformat=".2s", gridcolor=GRID, row=2, col=1)
-fig.update_yaxes(side="right", range=[0, 100], tickvals=[30, 50, 70], gridcolor=GRID, row=3, col=1)
-
-fig.update_layout(
-    paper_bgcolor=BG, plot_bgcolor=BG, font=dict(color=TXT), height=900,
-    dragmode="pan", hovermode="x unified", showlegend=False,
-    margin=dict(l=10, r=70, t=30, b=30)
-)
-
-st.plotly_chart(fig, use_container_width=True, config={"scrollZoom": True, "displaylogo": False})
+    # Kuonyesha Jedwali kwa Streamlit
+    st.dataframe(display_df.style.format({
+        'Bei ya Mwisho': '{:,.2f}',
+        'Mabadiliko (TZS)': '{:,.2f}',
+        'Mabadiliko (%)': '{:+.2f}%',
+        'RSI (14)': '{:.1f}',
+        'Volume': '{:,.0f}'
+    }).background_gradient(subset=['Mabadiliko (%)'], cmap='RdYlGn'), use_container_width=True, height=600)
