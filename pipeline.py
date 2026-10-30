@@ -6,28 +6,38 @@ from io import StringIO
 
 print("Inaanza mchakato wa kusoma data...")
 
-# Hapa tunavuta data moja kwa moja kutoka kwenye Repo yako ya Pipeline (Dse.pipeline)
-# Hii inahakikisha tunapata data zote zilizopo huko
-RAW_CSV_URL = "https://raw.githubusercontent.com/andrewbaraka197-sys/Dse.pipeline/main/dse_daily.csv"
+# =====================================================================
+# HAPA NDIO TUMEREKEBISHA: Tunaenda kwenye folda la 'data/' 
+# =====================================================================
+RAW_CSV_URL = "https://raw.githubusercontent.com/andrewbaraka197-sys/Dse.pipeline/main/data/dse_daily.csv"
 
 try:
     response = requests.get(RAW_CSV_URL)
     response.raise_for_status()
     df = pd.read_csv(StringIO(response.text), parse_dates=["date"])
-    print("Data imepatikana kutoka GitHub!")
+    print(f"Data imepatikana kutoka GitHub! Jumla ya safu: {len(df)}")
 except Exception as e:
     print(f"Kosa la kupakua data: {e}")
-    # Kama imeshindikana, tumia ile iliyopo kwenye repo hii kama backup
+    # Jaribu kusoma faili la local kama backup
     try:
-        df = pd.read_csv("dse_daily.csv", parse_dates=["date"])
+        df = pd.read_csv("data/dse_daily.csv", parse_dates=["date"])
+        print("Data imepatikana kutoka local folda.")
     except:
-        exit()
+        try:
+            df = pd.read_csv("dse_daily.csv", parse_dates=["date"])
+            print("Data imepatikana kutoka local root.")
+        except:
+            print("Hakuna data yoyote iliyopatikana!")
+            exit()
 
-# Usafishaji mdogo
+# Usafishaji
 df["date"] = pd.to_datetime(df["date"], errors="coerce")
 df["symbol"] = df["symbol"].astype(str).str.upper().str.strip()
 df = df.dropna(subset=["date", "close"])
 df = df.sort_values(["symbol", "date"])
+
+print(f"Tarehe ya kwanza kwenye data: {df['date'].min()}")
+print(f"Tarehe ya mwisho kwenye data: {df['date'].max()}")
 
 # Hesabu RSI
 def calculate_rsi(series, period=14):
@@ -41,7 +51,6 @@ df['rsi_14'] = df.groupby('symbol')['close'].transform(calculate_rsi)
 
 output_data = []
 for sym in df['symbol'].unique():
-    # HAKUNA .tail() HAPA - Tunachukua data zote tangu mwanzo
     sdf = df[df['symbol'] == sym].sort_values('date')
     
     chart_data = []
@@ -72,4 +81,4 @@ for sym in df['symbol'].unique():
 with open("data.json", "w") as f:
     json.dump(output_data, f)
 
-print("Mchakato umekamilika! data.json imetengenezwa na data zote za nyuma.")
+print(f"Mchakato umekamilika! data.json imetengenezwa. Jumla ya hisa: {len(output_data)}")
