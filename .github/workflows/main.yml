@@ -1,14 +1,16 @@
-
 name: Auto Update DSE Data
 
 on:
   schedule:
     - cron: '0 15 * * 1-5' # Inajirun saa 6 usiku EAT, Jumatatu-Ijumaa
-  workflow_dispatch: # Inakuruhusu ku-run manually ukibonyeza kitufe
+  workflow_dispatch: # Inakuruhusu ku-run manually
 
 jobs:
   update-data:
     runs-on: ubuntu-latest
+    # Hii hapa chini inatoa ruhusa ya kuandika (write access)
+    permissions:
+      contents: write 
     steps:
       - name: Checkout Repository
         uses: actions/checkout@v3
@@ -31,6 +33,5 @@ jobs:
           git config --global user.name 'GitHub Action'
           git config --global user.email 'action@github.com'
           git add data.json
-          # Tunajaribu ku-commit, kama hakuna mabadiliko inaruka bila kosa
           git commit -m "Auto-Update: Data mpya kutoka Pipeline" || echo "Hakuna mabadiliko mapya"
           git push
