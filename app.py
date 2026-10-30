@@ -12,15 +12,37 @@ UP, DOWN = "#26a69a", "#ef5350"
 UP_A, DOWN_A = "rgba(38,166,154,0.5)", "rgba(239,83,80,0.5)"
 BG, GRID, TXT = "#131722", "#1e222d", "#d1d4dc"
 LINE_COLOR = "#2962ff"
-SMA_COLORS = ["#2962ff", "#ff9800", "#e040fb"]
+
+# Hapa ndio kamusi ya majina na Nembo za Makampuni
+COMPANY_DATA = {
+    "CRDB": {"name": "CRDB Bank Plc", "logo": "https://upload.wikimedia.org/wikipedia/en/thumb/8/8a/CRDB_Bank_logo.svg/200px-CRDB_Bank_logo.svg.png"},
+    "NMB": {"name": "NMB Bank Plc", "logo": "https://upload.wikimedia.org/wikipedia/en/thumb/4/44/NMB_Bank_logo.svg/200px-NMB_Bank_logo.svg.png"},
+    "TOL": {"name": "TOL Gases Ltd", "logo": "https://tol.co.tz/wp-content/uploads/2021/02/TOL-Logo.png"},
+    "VODA": {"name": "Vodacom Tanzania", "logo": "https://upload.wikimedia.org/wikipedia/commons/thumb/5/5d/Vodacom_Logo.svg/200px-Vodacom_Logo.svg.png"},
+    "TCC": {"name": "Tanzania Cigarette Co", "logo": "https://www.tcc.co.tz/wp-content/uploads/2020/09/tcc-logo.png"},
+    "TBL": {"name": "Tanzania Breweries", "logo": "https://upload.wikimedia.org/wikipedia/en/thumb/1/1c/Tanzania_Breweries_Limited_logo.png/200px-Tanzania_Breweries_Limited_logo.png"},
+    "KCB": {"name": "KCB Bank (Kenya)", "logo": "https://upload.wikimedia.org/wikipedia/commons/thumb/4/4a/KCB_Bank_Logo.svg/200px-KCB_Bank_Logo.svg.png"},
+    "DCB": {"name": "DCB Commercial Bank", "logo": "https://dcbbank.co.tz/wp-content/uploads/2021/05/dcb-logo.png"},
+    "TPCC": {"name": "Tanzania Portland Cement", "logo": "https://twigacement.com/wp-content/uploads/2019/06/Twiga-Cement-Logo.png"},
+    "SWIS": {"name": "Swissport Tanzania", "logo": "https://www.swissport.com/fileadmin/_processed_/6/3/csm_Swissport_Logo_2018_RGB_5c3e8c40e9.png"},
+    "NICO": {"name": "National Investment Co", "logo": "https://www.nico.co.tz/wp-content/uploads/2021/04/NICOL-LOGO.png"},
+}
 
 st.markdown(f'''
     <style>
     .stApp {{ background-color: {BG}; color: {TXT}; }}
     .css-1d391kg {{ background-color: #1e222d; }}
-    .stSelectbox label, .stRadio label {{ color: {TXT} !important; }}
-    .stButton>button {{ background-color: #2a2e39; color: {TXT}; border: 1px solid #363a45; }}
-    .stButton>button:hover {{ background-color: #363a45; color: white; }}
+    .stRadio label {{ color: {TXT} !important; }}
+    
+    /* CSS ya kupanga nembo na majina kwenye sidebar */
+    .stock-item {{
+        display: flex; align-items: center; padding: 8px; border-radius: 5px; cursor: pointer; margin-bottom: 5px;
+    }}
+    .stock-item:hover {{ background-color: #2a2e39; }}
+    .stock-logo {{ width: 30px; height: 30px; object-fit: contain; margin-right: 10px; background-color: white; border-radius: 4px; padding: 2px; }}
+    .stock-info {{ display: flex; flex-direction: column; }}
+    .stock-symbol {{ font-weight: bold; font-size: 14px; color: white; }}
+    .stock-name {{ font-size: 11px; color: #8b949e; }}
     </style>
 ''', unsafe_allow_html=True)
 
@@ -49,7 +71,7 @@ def load_data():
 df_master = load_data()
 
 if df_master.empty:
-    st.error("Data haipo au ina hitilafu. Tafadhali hakikisha 'data.json' ipo GitHub na Pipeline imefanya kazi.")
+    st.error("Data haipo au ina hitilafu. Tafadhali hakikisha 'data.json' ipo GitHub.")
     st.stop()
 
 def resample(d, kind):
@@ -68,17 +90,64 @@ def resample(d, kind):
     })
     return out.reset_index(drop=True).sort_values("date").reset_index(drop=True)
 
-# ================= SIDEBAR: WATCHLIST =================
+# ================= SIDEBAR: WATCHLIST NA NEMBO =================
 st.sidebar.title("📈 BXStockView")
 st.sidebar.markdown("---")
 
 symbols = df_master['symbol'].unique().tolist()
-selected_sym = st.sidebar.radio("**Watchlist (Chagua Hisa):**", sorted(symbols))
+
+# Tunatengeneza list ya majina na nembo kwa ajili ya kuchagua
+sym_options = []
+for s in sorted(symbols):
+    if s in COMPANY_DATA:
+        name = COMPANY_DATA[s]["name"]
+        logo = COMPANY_DATA[s]["logo"]
+    else:
+        name = s # Kama haipo kwenye kamusi, itatumia symbol tu
+        logo = "https://via.placeholder.com/30?text=No+Logo"
+    sym_options.append({"symbol": s, "name": name, "logo": logo})
+
+# Tunatumia selectbox lakini tumeificha tukaanza kutumia HTML kuchora list nzuri
+st.sidebar.markdown("<h4 style='color:#00f2fe; font-size:16px; margin-bottom:10px;'>WATCHLIST</h4>", unsafe_allow_html=True)
+
+# Kwasababu Streamlit radio haiwezi kuweka picha ndani yake kirahisi, 
+# tunatumia selectbox na tunaifanya ionekane kama list
+selected_idx = st.sidebar.selectbox(
+    "Chagua Hisa:",
+    range(len(sym_options)),
+    format_func=lambda x: f"{sym_options[x]['symbol']} - {sym_options[x]['name']}"
+)
+
+# Chukua taarifa za hiyo hisa iliyochaguliwa
+selected_item = sym_options[selected_idx]
+selected_sym = selected_item['symbol']
+selected_name = selected_item['name']
+selected_logo = selected_item['logo']
+
+# Onyesha nembo na jina chini ya selectbox kama uthibitisho
+st.sidebar.markdown(f"""
+<div style="display:flex; align-items:center; background-color:#151a21; padding:10px; border-radius:8px; margin-top:10px; border:1px solid #2a323d;">
+    <img src="{selected_logo}" style="width:40px; height:40px; object-fit:contain; margin-right:15px; background:white; border-radius:5px; padding:2px;">
+    <div>
+        <div style="color:white; font-weight:bold; font-size:16px;">{selected_sym}</div>
+        <div style="color:#8b949e; font-size:12px;">{selected_name}</div>
+    </div>
+</div>
+""", unsafe_allow_html=True)
+
 
 # ================= MAIN PAGE: CONTROLS =================
-st.title(f"📊 {selected_sym}")
+# Kichwa cha Chart kinaonyesha Nembo, Symbol na Jina
+st.markdown(f"""
+<div style="display:flex; align-items:center; margin-bottom: 20px;">
+    <img src="{selected_logo}" style="width:50px; height:50px; object-fit:contain; margin-right:20px; background:white; border-radius:8px; padding:4px;">
+    <div>
+        <h2 style="margin:0; color:white;">{selected_sym}</h2>
+        <span style="color:#8b949e; font-size:16px;">{selected_name}</span>
+    </div>
+</div>
+""", unsafe_allow_html=True)
 
-# Nimeongeza chaguo la muda wa historia
 col1, col2, col3 = st.columns(3)
 with col1:
     timeframe = st.selectbox("**Timeframe:**", ["Daily", "Weekly", "Monthly", "3 Months", "6 Months", "1 Year"])
@@ -91,9 +160,8 @@ with col3:
 tf_map = {"Daily": "D", "Weekly": "W", "Monthly": "M", "3 Months": "3M", "6 Months": "6M", "1 Year": "1Y"}
 d = df_master[df_master["symbol"] == selected_sym].sort_values("date")
 
-# Filter kulingana na History Range
 if history_range == "Mwaka 1 wa Mwisho":
-    d = d.tail(252) # Siku 252 za biashara = mwaka 1
+    d = d.tail(252) 
 elif history_range == "Miezi 6 ya Mwisho":
     d = d.tail(126)
 
