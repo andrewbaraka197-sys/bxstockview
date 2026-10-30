@@ -7,28 +7,24 @@ from io import StringIO
 print("Inaanza mchakato wa kusoma data...")
 
 # =====================================================================
-# HAPA NDIO TUMEREKEBISHA: Tunaenda kwenye folda la 'data/' 
+# HAPA: Tunabadilisha URL iende kwenye dse_hist.csv (Historia)
 # =====================================================================
-RAW_CSV_URL = "https://raw.githubusercontent.com/andrewbaraka197-sys/Dse.pipeline/main/data/dse_daily.csv"
+RAW_CSV_URL = "https://raw.githubusercontent.com/andrewbaraka197-sys/Dse.pipeline/main/dse_hist.csv"
 
 try:
     response = requests.get(RAW_CSV_URL)
     response.raise_for_status()
     df = pd.read_csv(StringIO(response.text), parse_dates=["date"])
-    print(f"Data imepatikana kutoka GitHub! Jumla ya safu: {len(df)}")
+    print(f"Data ya historia imepatikana kutoka GitHub! Jumla ya safu: {len(df)}")
 except Exception as e:
-    print(f"Kosa la kupakua data: {e}")
-    # Jaribu kusoma faili la local kama backup
+    print(f"Kosa la kupakua historia: {e}")
+    # Jaribu kusoma dse_hist.csv la local
     try:
-        df = pd.read_csv("data/dse_daily.csv", parse_dates=["date"])
-        print("Data imepatikana kutoka local folda.")
+        df = pd.read_csv("dse_hist.csv", parse_dates=["date"])
+        print("Data ya historia imepatikana kutoka local.")
     except:
-        try:
-            df = pd.read_csv("dse_daily.csv", parse_dates=["date"])
-            print("Data imepatikana kutoka local root.")
-        except:
-            print("Hakuna data yoyote iliyopatikana!")
-            exit()
+        print("Hakuna dse_hist.csv iliyopatikana!")
+        exit()
 
 # Usafishaji
 df["date"] = pd.to_datetime(df["date"], errors="coerce")
