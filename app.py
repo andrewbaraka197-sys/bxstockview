@@ -13,11 +13,23 @@ hide_st_style = """
             """
 st.markdown(hide_st_style, unsafe_allow_html=True)
 
-try:
-    with open('data.json', 'r') as f:
-        dse_data = json.load(f)
-except FileNotFoundError:
-    dse_data = []
+# =====================================================================
+# HAPA NDIO PAMErekebishwa: Tunatumia cache_data(ttl=1) 
+# =====================================================================
+@st.cache_data(ttl=1)
+def load_data():
+    try:
+        with open('data.json', 'r') as f:
+            return json.load(f)
+    except Exception as e:
+        return []
+
+dse_data = load_data()
+
+# Kama data haipo, onyesha kosa
+if len(dse_data) == 0:
+    st.error("⚠️ KOSA: Faili la 'data.json' halipo au ni tupu (empty) kwenye GitHub yako. Tafadhali hakikisha jina ni 'data.json' na lina data ndani yake.")
+    st.stop() # Simamisha App isiendelee kama data haipo
 
 json_data_str = json.dumps(dse_data)
 
