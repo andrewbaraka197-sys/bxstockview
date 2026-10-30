@@ -39,8 +39,6 @@ st.markdown(f'''
     .stApp {{ background-color: {BG}; color: {TXT}; }}
     .css-1d391kg {{ background-color: #1e222d; }}
     .stRadio label {{ color: {TXT} !important; }}
-    /* CSS ya Table ya Screener */
-    .dataframe {{ background-color: #151a21 !important; color: white !important; }}
     </style>
 ''', unsafe_allow_html=True)
 
@@ -53,12 +51,32 @@ def load_data():
         all_rows = []
         for stock in data:
             sym = stock['symbol']
-            for day in stock['chart_data']:
+            
+            # KINGA: Kama 'close', 'change' n.k. hazipo kwenye data, tunazitengeneza
+            stock_close = stock.get('close', 0.0)
+            stock_change = stock.get('change', 0.0)
+            stock_pct = stock.get('pct', 0.0)
+            
+            chart_data = stock.get('chart_data', [])
+            
+            if len(chart_data) > 0:
+                last_day = chart_data[-1]
+                prev_day = chart_data[-2] if len(chart_data) > 1 else last_day
+                
+                # Hesabu upya mabadiliko endapo hayapo
+                if stock_change == 0.0:
+                    stock_change = last_day['close'] - prev_day['close']
+                if stock_pct == 0.0 and prev_day['close'] != 0:
+                    stock_pct = (stock_change / prev_day['close']) * 100
+
+            for day in chart_data:
                 all_rows.append({
                     'symbol': sym, 'date': pd.to_datetime(day['time']),
-                    'open': day['open'], 'high': day['high'], 'low': day['low'],
-                    'close': day['close'], 'volume': day.get('volume', 0),
-                    'rsi_14': day.get('rsi_14', 50.0) 
+                    'open': day.get('open', 0), 'high': day.get('high', 0), 'low': day.get('low', 0),
+                    'close': day.get('close', 0), 'volume': day.get('volume', 0),
+                    'rsi_14': day.get('rsi_14', 50.0),
+                    'change': stock_change, # Hizi tunazihamisha hapa chini kwa urahisi
+                    'pct': stock_pct
                 })
         df = pd.DataFrame(all_rows)
         df = df.sort_values(['symbol', 'date'])
@@ -76,7 +94,6 @@ if df_master.empty:
 st.sidebar.title("📈 BXStockView")
 st.sidebar.markdown("---")
 
-# HAPA: Tumeongeza chaguo la Screener
 page = st.sidebar.radio("**Menyu:**", ["📊 Chart Analysis", "🔎 Market Screener"])
 
 if page == "📊 Chart Analysis":
@@ -149,7 +166,6 @@ elif page == "🔎 Market Screener":
     # Tunachukua data ya siku ya mwisho kwa kila hisa
     latest_data = df_master.sort_values('date').groupby('symbol').tail(1)
 
-    # Vigezo vya Kuchuja (Filters)
     col1, col2, col3 = st.columns(3)
     with col1:
         rsi_filter = st.selectbox("**RSI Signal:**", ["Zote", "Oversold (Chini ya 30)", "Overbought (Juu ya 70)", "Neutral (30-70)"])
@@ -158,7 +174,6 @@ elif page == "🔎 Market Screener":
     with col3:
         min_vol = st.number_input("**Kiwango cha Chini cha Volume:**", min_value=0, value=0, step=10000)
 
-    # Kuchuja data
     filtered = latest_data.copy()
     
     if rsi_filter == "Oversold (Chini ya 30)":
@@ -175,14 +190,13 @@ elif page == "🔎 Market Screener":
 
     filtered = filtered[filtered['volume'] >= min_vol]
 
-    # Kuandaa Jedwali
-    display_df = filtered[['symbol', 'close', 'change', 'pct', 'rsi_14', 'volume']].copy()
+    # Hapa tumerekebisha ili tusipate KeyError (tunatumia .reindex na fillna)
+    display_df = filtered.reindex(columns=['symbol', 'close', 'change', 'pct', 'rsi_14', 'volume']).fillna(0)
+    
     display_df.columns = ['Hisa (Symbol)', 'Bei ya Mwisho', 'Mabadiliko (TZS)', 'Mabadiliko (%)', 'RSI (14)', 'Volume']
     
-    # Kupanga kwa kiasi cha mabadiliko (kushuka hadi kupanda)
     display_df = display_df.sort_values('Mabadiliko (%)', ascending=False)
 
-    # Kuonyesha Jedwali kwa Streamlit
     st.dataframe(display_df.style.format({
         'Bei ya Mwisho': '{:,.2f}',
         'Mabadiliko (TZS)': '{:,.2f}',
