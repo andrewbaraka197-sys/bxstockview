@@ -14,7 +14,6 @@ BG, GRID, TXT = "#131722", "#1e222d", "#d1d4dc"
 LINE_COLOR = "#2962ff"
 SMA_COLORS = ["#2962ff", "#ff9800", "#e040fb"]
 
-# CSS ya kubadilisha muonekano (Dark Mode)
 st.markdown(f'''
     <style>
     .stApp {{ background-color: {BG}; color: {TXT}; }}
@@ -25,8 +24,7 @@ st.markdown(f'''
     </style>
 ''', unsafe_allow_html=True)
 
-# ================= LOAD DATA =================
-@st.cache_data(ttl=60)
+@st.cache_data(ttl=60) 
 def load_data():
     try:
         with open("data.json", "r") as f:
@@ -39,14 +37,11 @@ def load_data():
                 all_rows.append({
                     'symbol': sym, 'date': pd.to_datetime(day['time']),
                     'open': day['open'], 'high': day['high'], 'low': day['low'],
-                    'close': day['close'], 'volume': day.get('volume', 0)
+                    'close': day['close'], 'volume': day.get('volume', 0),
+                    'rsi_14': day.get('rsi_14', 50.0) 
                 })
         df = pd.DataFrame(all_rows)
         df = df.sort_values(['symbol', 'date'])
-        
-        # Tunatengeneza RSI ya uongo (Dummy) kwa sasa kwa kuwa data.json haina
-        # Tutairekebisha kwenye hatua ya mwisho ya pipeline
-        df['rsi_14'] = 50.0 
         return df
     except Exception as e:
         return pd.DataFrame()
@@ -54,7 +49,7 @@ def load_data():
 df_master = load_data()
 
 if df_master.empty:
-    st.error("Data haipo au ina hitilafu.")
+    st.error("Data haipo au ina hitilafu. Tafadhali hakikisha 'data.json' ipo GitHub na Pipeline imefanya kazi.")
     st.stop()
 
 def resample(d, kind):
@@ -83,23 +78,32 @@ selected_sym = st.sidebar.radio("**Watchlist (Chagua Hisa):**", sorted(symbols))
 # ================= MAIN PAGE: CONTROLS =================
 st.title(f"📊 {selected_sym}")
 
-col1, col2 = st.columns(2)
+# Nimeongeza chaguo la muda wa historia
+col1, col2, col3 = st.columns(3)
 with col1:
     timeframe = st.selectbox("**Timeframe:**", ["Daily", "Weekly", "Monthly", "3 Months", "6 Months", "1 Year"])
 with col2:
     chart_type = st.selectbox("**Chart Type:**", ["Candlestick", "Line", "Area"])
+with col3:
+    history_range = st.selectbox("**History (Data za Nyuma):**", ["Zote (Tangu 2015)", "Mwaka 1 wa Mwisho", "Miezi 6 ya Mwisho"])
 
 # ================= FILTER DATA =================
 tf_map = {"Daily": "D", "Weekly": "W", "Monthly": "M", "3 Months": "3M", "6 Months": "6M", "1 Year": "1Y"}
 d = df_master[df_master["symbol"] == selected_sym].sort_values("date")
+
+# Filter kulingana na History Range
+if history_range == "Mwaka 1 wa Mwisho":
+    d = d.tail(252) # Siku 252 za biashara = mwaka 1
+elif history_range == "Miezi 6 ya Mwisho":
+    d = d.tail(126)
+
 r = resample(d, tf_map[timeframe])
 r["lab"] = r["date"].dt.strftime("%d %b %y")
 
 # ================= TENGENEZA CHART =================
-# Tumeongeza urefu kuwa 900, na kupanga row_heights ipasavyo
 fig = make_subplots(
     rows=3, cols=1, shared_xaxes=True, vertical_spacing=0.03, 
-    row_heights=[0.6, 0.15, 0.25] # Price 60%, Vol 15%, RSI 25%
+    row_heights=[0.6, 0.15, 0.25] 
 )
 
 if chart_type == "Candlestick":
@@ -112,26 +116,20 @@ elif chart_type == "Area":
     fig.add_trace(go.Scatter(x=r["lab"], y=r["close"], mode="lines", fill="tozeroy",
                              line=dict(color=LINE_COLOR, width=2), fillcolor="rgba(41, 98, 255, 0.2)"), row=1, col=1)
 
-# Volume
 fig.add_trace(go.Bar(x=r["lab"], y=r["volume"], marker_color=np.where(r["close"] >= r["open"], UP_A, DOWN_A), name="Volume"), row=2, col=1)
 
-# RSI
 fig.add_trace(go.Scatter(x=r["lab"], y=r["rsi_14"], mode="lines", line=dict(color="#e040fb", width=2), name="RSI"), row=3, col=1)
-# Mistari ya 70 na 30
 fig.add_trace(go.Scatter(x=[r["lab"].iloc[0], r["lab"].iloc[-1]], y=[70, 70], mode="lines", line=dict(color="rgba(255, 255, 255, 0.3)", width=1, dash="dash"), showlegend=False), row=3, col=1)
 fig.add_trace(go.Scatter(x=[r["lab"].iloc[0], r["lab"].iloc[-1]], y=[30, 30], mode="lines", line=dict(color="rgba(255, 255, 255, 0.3)", width=1, dash="dash"), showlegend=False), row=3, col=1)
-# Mstari wa kati (50)
 fig.add_trace(go.Scatter(x=[r["lab"].iloc[0], r["lab"].iloc[-1]], y=[50, 50], mode="lines", line=dict(color="rgba(255, 255, 255, 0.1)", width=1), showlegend=False), row=3, col=1)
 
-# Layout
 fig.update_xaxes(type="category", categoryorder="array", categoryarray=list(r["lab"]), rangeslider_visible=False, gridcolor=GRID, zerolinecolor=GRID)
 fig.update_yaxes(side="right", tickformat=",.0f", gridcolor=GRID, row=1, col=1)
 fig.update_yaxes(side="right", tickformat=".2s", gridcolor=GRID, row=2, col=1)
-# Tumerudisha range ya RSI kuwa 0 hadi 100 ili ionekane vizuri na isibanwe
 fig.update_yaxes(side="right", range=[0, 100], tickvals=[30, 50, 70], gridcolor=GRID, row=3, col=1)
 
 fig.update_layout(
-    paper_bgcolor=BG, plot_bgcolor=BG, font=dict(color=TXT), height=900, # Urefu umeongezwa
+    paper_bgcolor=BG, plot_bgcolor=BG, font=dict(color=TXT), height=900,
     dragmode="pan", hovermode="x unified", showlegend=False,
     margin=dict(l=10, r=70, t=30, b=30)
 )
