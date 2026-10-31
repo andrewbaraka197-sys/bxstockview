@@ -74,7 +74,7 @@ if df_master.empty:
 # MANTIKI YA BX AI SCORE NA UCHAMBUZI (The Smart Logic)
 # =====================================================================
 def analyze_stock(sdf):
-    if len(sdf) < 5: return 0, "Hakuna data ya kutosha.", []
+    if len(sdf) < 5: return 0, ["Hakuna data ya kutosha."], []
     
     last = sdf.iloc[-1]
     rsi = last['rsi_14']
@@ -82,21 +82,19 @@ def analyze_stock(sdf):
     vol_avg = sdf['volume'].tail(20).mean()
     vol_today = last['volume']
     
-    score = 50 # Base score
+    score = 50
     reasons = []
     warnings = []
 
-    # 1. RSI Logic
     if rsi < 30:
         score += 20
         reasons.append("✅ RSI iko chini ya 30 (Oversold) - Fursa nzuri ya kununua.")
     elif rsi > 70:
         score -= 20
-        warnings.append("⚠️ RSI iko juu ya 70 (Overbought) - Hatari ya kushuka.)
+        warnings.append("⚠️ RSI iko juu ya 70 (Overbought) - Hatari ya kushuka.") # <-- Kosa lilikuwa hapa
     else:
         reasons.append("✅ RSI iko katika eneo la kati (Neutral).")
 
-    # 2. Volume Logic
     if vol_today > (vol_avg * 1.5):
         score += 15
         reasons.append("✅ Volume imeongezeka sana leo - Wanunuzi wengi wanaingia.")
@@ -104,7 +102,6 @@ def analyze_stock(sdf):
         score -= 30
         warnings.append("🚨 Hakuna biashara leo (Volume = 0) - Hisa hii ni ngumu kuuza (Illiquid).")
 
-    # 3. Trend Logic (Kulinganisha na SMA 50)
     if len(sdf) > 50:
         sma50 = sdf['close'].tail(50).mean()
         if close > sma50:
@@ -114,9 +111,7 @@ def analyze_stock(sdf):
             score -= 15
             warnings.append("⚠️ Bei iko chini ya wastani wa siku 50 (Trend ni Mbaya).")
 
-    # Kikomo cha Score
     score = max(0, min(100, score))
-    
     return score, reasons, warnings
 # =====================================================================
 
@@ -137,11 +132,9 @@ if page == "📊 Chart Analysis":
 
     st.markdown(f'<div style="display:flex; align-items:center; margin-bottom: 10px;">{logo_html_main}<div><h2 style="margin:0; color:white;">{selected_sym}</h2><span style="color:#8b949e; font-size:16px;">{selected_name}</span></div></div>', unsafe_allow_html=True)
 
-    # ================= BX AI ANALYSIS PANEL =================
     stock_data = df_master[df_master['symbol'] == selected_sym].sort_values('date')
     ai_score, reasons, warnings = analyze_stock(stock_data)
     
-    # Rangi kulingana na Score
     score_color = "#00e676" if ai_score >= 70 else "#ffb700" if ai_score >= 40 else "#ff5252"
     
     st.markdown(f"""
@@ -154,7 +147,6 @@ if page == "📊 Chart Analysis":
         </ul>
     </div>
     """, unsafe_allow_html=True)
-    # =========================================================
 
     col1, col2, col3 = st.columns(3)
     with col1: timeframe = st.selectbox("**Timeframe:**", ["Daily", "Weekly", "Monthly"])
@@ -198,7 +190,6 @@ elif page == "🔎 Market Screener":
     st.markdown("<h2 style='color:white;'>Market Screener</h2>", unsafe_allow_html=True)
     st.markdown("<p style='color:#8b949e;'>Chuja hisa kulingana na vigezo na BX AI Score.</p>", unsafe_allow_html=True)
     
-    # Tunatengeneza dataframe ya mwisho kwa kila hisa na kuiwekea AI Score
     latest_data = []
     for sym in df_master['symbol'].unique():
         sdf = df_master[df_master['symbol'] == sym].sort_values('date')
@@ -211,7 +202,7 @@ elif page == "🔎 Market Screener":
             })
     
     latest_df = pd.DataFrame(latest_data)
-    latest_df = latest_df[latest_df['volume'] > 0] # Ondoa zisizo na biashara
+    latest_df = latest_df[latest_df['volume'] > 0]
     
     last_market_date = df_master['date'].max()
     latest_df['days_since_trade'] = (last_market_date - latest_df['date']).dt.days
