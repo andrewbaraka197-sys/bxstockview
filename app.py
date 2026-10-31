@@ -91,7 +91,7 @@ def analyze_stock(sdf):
         reasons.append("✅ RSI iko chini ya 30 (Oversold) - Fursa nzuri ya kununua.")
     elif rsi > 70:
         score -= 20
-        warnings.append("⚠️ RSI iko juu ya 70 (Overbought) - Hatari ya kushuka.") # <-- Kosa lilikuwa hapa
+        warnings.append("⚠️ RSI iko juu ya 70 (Overbought) - Hatari ya kushuka.")
     else:
         reasons.append("✅ RSI iko katika eneo la kati (Neutral).")
 
@@ -137,14 +137,18 @@ if page == "📊 Chart Analysis":
     
     score_color = "#00e676" if ai_score >= 70 else "#ffb700" if ai_score >= 40 else "#ff5252"
     
+    # HAPA NDIO PAMErekebishwa: Tunatengeneza HTML ya orodha vizuri
+    reasons_html = "".join([f'<div style="margin-bottom: 4px;">• {r}</div>' for r in reasons])
+    warnings_html = "".join([f'<div style="margin-bottom: 4px; color:#ff9800;">• {w}</div>' for w in warnings])
+    
     st.markdown(f"""
     <div style="background-color:#151a21; padding:15px; border-radius:8px; border-left: 5px solid {score_color}; margin-bottom: 20px;">
         <h4 style="margin:0; color:white;">BX AI Score: <span style="color:{score_color};">{ai_score}/100</span></h4>
         <p style="color:#8b949e; margin:5px 0 10px 0; font-size:14px;">Mchanganuo wa haraka kulingana na data ya soko:</p>
-        <ul style="color:#e1e6ed; font-size:14px; margin:0;">
-            {"".join([f"<li>{r}</li>" for r in reasons])}
-            {"".join([f"<li style='color:#ff9800;'>{w}</li>" for w in warnings])}
-        </ul>
+        <div style="color:#e1e6ed; font-size:14px;">
+            {reasons_html}
+            {warnings_html}
+        </div>
     </div>
     """, unsafe_allow_html=True)
 
