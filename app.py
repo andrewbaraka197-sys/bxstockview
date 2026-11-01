@@ -28,6 +28,12 @@ COMPANY_DATA = {
     "NICO": {"name": "National Investment Co", "domain": "nico.co.tz"},
 }
 
+# =====================================================================
+# HAPA: Orodha ya hisa zisizotakiwa (Zimeondolewa au Maneno ya Uongo)
+# =====================================================================
+DELISTED_SYMBOLS = ["ACA", "KA", "JATU", "DOWNLOAD", "DSEI", "TCCIA"]
+# =====================================================================
+
 def get_logo_html(sym, domain, size=50):
     if domain:
         logo_url = f"https://img.logo.dev/{domain}?token=pk_2Z7XecBchSB7U8OxYamQIBoDH4F_7huod8eqNPzz6W5hgu1Uz"
@@ -53,6 +59,10 @@ def load_data():
         all_rows = []
         for stock in data:
             sym = stock['symbol']
+            # HAPA: Tunachuja zile zilizo kwenye DELISTED_SYMBOLS
+            if sym in DELISTED_SYMBOLS:
+                continue
+                
             chart_data = stock.get('chart_data', [])
             for day in chart_data:
                 all_rows.append({
@@ -137,7 +147,6 @@ if page == "📊 Chart Analysis":
     
     score_color = "#00e676" if ai_score >= 70 else "#ffb700" if ai_score >= 40 else "#ff5252"
     
-    # HAPA NDIO PAMErekebishwa: Kuunganisha HTML yote kwenye mstari mmoja ili kuzuia </div> kuonekana
     reasons_html = "".join([f'<div style="margin-bottom: 4px;">• {r}</div>' for r in reasons])
     warnings_html = "".join([f'<div style="margin-bottom: 4px; color:#ff9800;">• {w}</div>' for w in warnings])
     
@@ -189,6 +198,10 @@ elif page == "🔎 Market Screener":
     
     latest_data = []
     for sym in df_master['symbol'].unique():
+        # Hii pia inachuja hapa kwa usalama zaidi
+        if sym in DELISTED_SYMBOLS:
+            continue
+            
         sdf = df_master[df_master['symbol'] == sym].sort_values('date')
         if len(sdf) > 0:
             score, _, _ = analyze_stock(sdf)
