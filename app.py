@@ -14,46 +14,35 @@ UP_A, DOWN_A = "rgba(38,166,154,0.5)", "rgba(239,83,80,0.5)"
 BG, GRID, TXT = "#131722", "#1e222d", "#d1d4dc"
 LINE_COLOR = "#2962ff"
 
-# Kamusi ya Majina, Nembo na Sekta
+# Kamusi ya Makampuni
 COMPANY_DATA = {
-    "CRDB": {"name": "CRDB Bank Plc", "domain": "crdbbank.co.tz"},
-    "NMB": {"name": "NMB Bank Plc", "domain": "nmbbank.co.tz"},
-    "VODA": {"name": "Vodacom Tanzania", "domain": "vodacom.co.tz"},
-    "TBL": {"name": "Tanzania Breweries", "domain": "tbl.co.tz"},
-    "KCB": {"name": "KCB Bank (Kenya)", "domain": "kcbgroup.com"},
-    "TPCC": {"name": "Tanzania Portland Cement (Twiga)", "domain": "twigacement.com"},
-    "TOL": {"name": "TOL Gases Ltd", "domain": "tol.co.tz"},
-    "TCC": {"name": "Tanzania Cigarette Co", "domain": "tcc.co.tz"},
-    "DCB": {"name": "DCB Commercial Bank", "domain": "dcbbank.co.tz"},
-    "SWIS": {"name": "Swissport Tanzania", "domain": "swissport.com"},
-    "NICO": {"name": "National Investment Co", "domain": "nico.co.tz"},
-    "TPLC": {"name": "Tanga Cement Plc", "domain": "tangacement.co.tz"},
+    "CRDB": {"name": "CRDB Bank Plc", "domain": "crdbbank.co.tz", "sector": "Banking"},
+    "NMB": {"name": "NMB Bank Plc", "domain": "nmbbank.co.tz", "sector": "Banking"},
+    "VODA": {"name": "Vodacom Tanzania", "domain": "vodacom.co.tz", "sector": "Telecom"},
+    "TBL": {"name": "Tanzania Breweries", "domain": "tbl.co.tz", "sector": "Beverages"},
+    "KCB": {"name": "KCB Bank (Kenya)", "domain": "kcbgroup.com", "sector": "Banking"},
+    "TPCC": {"name": "Tanzania Portland Cement", "domain": "twigacement.com", "sector": "Construction"},
+    "TOL": {"name": "TOL Gases Ltd", "domain": "tol.co.tz", "sector": "Industrial"},
+    "TCC": {"name": "Tanzania Cigarette Co", "domain": "tcc.co.tz", "sector": "Manufacturing"},
+    "DCB": {"name": "DCB Commercial Bank", "domain": "dcbbank.co.tz", "sector": "Banking"},
+    "SWIS": {"name": "Swissport Tanzania", "domain": "swissport.com", "sector": "Aviation"},
+    "NICO": {"name": "National Investment Co", "domain": "nico.co.tz", "sector": "Investment"},
+    "TPLC": {"name": "Tanga Cement Plc", "domain": "tangacement.co.tz", "sector": "Construction"},
 }
 
-# =====================================================================
-# 1. MFUMO WA KUBADILISHA MAJINA (ALIASES)
-# Hapa tunaunganisha majina ya zamani na mapya
-# =====================================================================
+# Majina Mbadala (Aliases)
 SYMBOL_ALIASES = {
-    "TCCL": "TPCC",        # Twiga Cement ilikuwa TCCL
-    "TWIGA": "TPCC",       # Twiga Cement ilikuwa TWIGA
-    "SIMBA": "TPCC",       # Jina la zamani la Twiga
-    "TCPLC": "TPLC",       # Tanga Cement
-    "TCC": "TCC",          # Tanzania Cigarette
-    "VERTEX ETF": "VERTEX-ETF",
-    "ITRUST ETF": "ITRUST-ETF",
-    "SWISS": "SWIS",
-    "MUCOB": "MUCOBA"
+    "TCCL": "TPCC", "TWIGA": "TPCC", "SIMBA": "TPCC",
+    "TCPLC": "TPLC", "SWISS": "SWIS", "MUCOB": "MUCOBA"
 }
 
-# Orodha ya hisa halali zilizopo DSE kwa sasa (2026)
+# Orodha Kamili ya DSE (Makampuni + Funds)
 VALID_DSE_SYMBOLS = [
     "DSE", "CRDB", "DCB", "EABL", "JHL", "KA", "KCB", "MBP", "NICO", "NMB", 
     "NMG", "PAL", "SWIS", "TBL", "TPLC", "TOL", "TTP", "SWALA", "USL", 
     "MKCB", "MCB", "YETU", "MUCOBA", "VODA", "AFRIPRISE", "JATU", "TCC", "TPCC",
     "VERTEX-ETF", "ITRUST-ETF", "IEACLC-ETF", "ZAN-ETF", "ZAN TANZANIA ETF"
 ]
-# =====================================================================
 
 def get_logo_html(sym, domain, size=50):
     if domain:
@@ -77,18 +66,12 @@ st.markdown(f'''
 def load_data():
     try:
         with open("data.json", "r") as f: data = json.load(f)
-        
         all_rows = []
         for stock in data:
             raw_sym = stock['symbol'].strip().upper()
-            
-            # 1. Badilisha jina la zamani kuwa jipya (Kama lipo)
             sym = SYMBOL_ALIASES.get(raw_sym, raw_sym)
-            
-            # 2. Chuja zisizopo kwenye orodha halali (Kama DOWNLOAD, ABG, ACA)
             if sym not in VALID_DSE_SYMBOLS:
                 continue
-                
             chart_data = stock.get('chart_data', [])
             for day in chart_data:
                 all_rows.append({
@@ -97,43 +80,40 @@ def load_data():
                     'volume': day.get('volume', 0), 'rsi_14': day.get('rsi_14', 50.0),
                     'change': stock.get('change', 0.0), 'pct': stock.get('pct', 0.0)
                 })
-        
         df = pd.DataFrame(all_rows)
-        
         if df.empty: return df
         
-        # 3. Unganisha data za majina yaliyobadilishwa (Ili wasijirudie kwenye list)
-        # Kwa kuwa sasa wana jina moja, tunapanga kwa tarehe na kuondoa marudio
         df = df.groupby(['symbol', 'date']).agg({
             'open': 'first', 'high': 'max', 'low': 'min', 'close': 'last',
             'volume': 'sum', 'rsi_14': 'last', 'change': 'last', 'pct': 'last'
         }).reset_index()
-        
         return df.sort_values(['symbol', 'date'])
-    except Exception as e:
-        return pd.DataFrame()
+    except: return pd.DataFrame()
+
+@st.cache_data(ttl=60)
+def load_macro():
+    try:
+        with open("macro_data.json", "r") as f: return json.load(f)
+    except: return {"CBR": "-", "Inflation": "-", "T-Bill": "-", "TZS/USD": "-", "DSEI": "-", "GDP": "-"}
 
 df_master = load_data()
+macro_data = load_macro()
 
 if df_master.empty:
     st.error("Data haipo. Tafadhali hakikisha 'data.json' ipo GitHub.")
     st.stop()
 
 # =====================================================================
-# MANTIKI YA BX AI SCORE NA UCHAMBUZI
+# MANTIKI YA BX AI SCORE
 # =====================================================================
 def analyze_stock(sdf):
     if len(sdf) < 5: return 0, ["Hakuna data ya kutosha."], []
-    
     last = sdf.iloc[-1]
-    rsi = last['rsi_14']
-    close = last['close']
+    rsi, close, vol_today = last['rsi_14'], last['close'], last['volume']
     vol_avg = sdf['volume'].tail(20).mean()
-    vol_today = last['volume']
     
     score = 50
-    reasons = []
-    warnings = []
+    reasons, warnings = [], []
 
     if rsi < 30:
         score += 20
@@ -167,7 +147,8 @@ def analyze_stock(sdf):
 # ================= SIDEBAR =================
 st.sidebar.title("📈 BXStockView")
 st.sidebar.markdown("---")
-page = st.sidebar.radio("**Menyu:**", ["📊 Chart Analysis", "🔎 Market Screener"])
+# Nimeongeza ukurasa wa "Market Pulse"
+page = st.sidebar.radio("**Menyu:**", ["📊 Chart Analysis", "🔎 Market Screener", "📰 Market Pulse & Reports"])
 
 if page == "📊 Chart Analysis":
     symbols = df_master['symbol'].unique().tolist()
@@ -185,12 +166,10 @@ if page == "📊 Chart Analysis":
     ai_score, reasons, warnings = analyze_stock(stock_data)
     
     score_color = "#00e676" if ai_score >= 70 else "#ffb700" if ai_score >= 40 else "#ff5252"
-    
     reasons_html = "".join([f'<div style="margin-bottom: 4px;">• {r}</div>' for r in reasons])
     warnings_html = "".join([f'<div style="margin-bottom: 4px; color:#ff9800;">• {w}</div>' for w in warnings])
     
-    ai_panel_html = f'<div style="background-color:#151a21; padding:15px; border-radius:8px; border-left: 5px solid {score_color}; margin-bottom: 20px;"><h4 style="margin:0; color:white;">BX AI Score: <span style="color:{score_color};">{ai_score}/100</span></h4><p style="color:#8b949e; margin:5px 0 10px 0; font-size:14px;">Mchanganuo wa haraka kulingana na data ya soko:</p><div style="color:#e1e6ed; font-size:14px;">{reasons_html}{warnings_html}</div></div>'
-    
+    ai_panel_html = f'<div style="background-color:#151a21; padding:15px; border-radius:8px; border-left: 5px solid {score_color}; margin-bottom: 20px;"><h4 style="margin:0; color:white;">BX AI Score: <span style="color:{score_color};">{ai_score}/100</span></h4><p style="color:#8b949e; margin:5px 0 10px 0; font-size:14px;">Mchanganuo wa haraka:</p><div style="color:#e1e6ed; font-size:14px;">{reasons_html}{warnings_html}</div></div>'
     st.markdown(ai_panel_html, unsafe_allow_html=True)
 
     col1, col2, col3 = st.columns(3)
@@ -232,6 +211,7 @@ if page == "📊 Chart Analysis":
     st.plotly_chart(fig, use_container_width=True, config={"scrollZoom": True, "displaylogo": False})
 
 elif page == "🔎 Market Screener":
+    # [Sehemu ya Screener inabaki kama ilivyokuwa]
     st.markdown("<h2 style='color:white;'>Market Screener</h2>", unsafe_allow_html=True)
     st.markdown("<p style='color:#8b949e;'>Chuja hisa kulingana na vigezo na BX AI Score.</p>", unsafe_allow_html=True)
     
@@ -248,7 +228,6 @@ elif page == "🔎 Market Screener":
     
     latest_df = pd.DataFrame(latest_data)
     latest_df = latest_df[latest_df['volume'] > 0]
-    
     last_market_date = df_master['date'].max()
     latest_df['days_since_trade'] = (last_market_date - latest_df['date']).dt.days
 
@@ -263,13 +242,10 @@ elif page == "🔎 Market Screener":
 
     filtered = latest_df.copy()
     filtered = filtered[filtered['ai_score'] >= min_score]
-    
     if rsi_filter == "Oversold (<30)": filtered = filtered[filtered['rsi_14'] < 30]
     elif rsi_filter == "Overbought (>70)": filtered = filtered[filtered['rsi_14'] > 70]
-
     filtered['turnover'] = filtered['volume'] * filtered['close']
     filtered = filtered[filtered['turnover'] >= min_turnover]
-
     if liquidity_filter == "Zinazofanya biashara (Siku 5 zilizopita)": filtered = filtered[filtered['days_since_trade'] <= 5]
 
     display_df = filtered.reindex(columns=['symbol', 'ai_score', 'close', 'change', 'pct', 'rsi_14', 'turnover', 'days_since_trade']).fillna(0)
@@ -280,3 +256,38 @@ elif page == "🔎 Market Screener":
         'BX AI Score': '{:.0f}', 'Bei ya Mwisho': '{:,.2f}', 'Mabadiliko (TZS)': '{:,.2f}', 
         'Mabadiliko (%)': '{:+.2f}%', 'RSI (14)': '{:.1f}', 'Fedha (TZS)': '{:,.0f}'
     }).background_gradient(subset=['BX AI Score', 'Mabadiliko (%)'], cmap='RdYlGn'), use_container_width=True, height=600)
+
+elif page == "📰 Market Pulse & Reports":
+    # =====================================================================
+    # UKURASA MPYA: MACRO DATA NA RIPOTI ZA MAKAMPUNI
+    # =====================================================================
+    st.markdown("<h2 style='color:white;'>Market Pulse & Reports</h2>", unsafe_allow_html=True)
+    st.markdown("<p style='color:#8b949e;'>Taarifa za Uchumi (BOT) na Ripoti za Makampuni.</p>", unsafe_allow_html=True)
+
+    st.markdown("<h4 style='color:white; margin-bottom: 10px;'>🌍 Macroeconomic Indicators (BOT)</h4>", unsafe_allow_html=True)
+    col_m1, col_m2, col_m3 = st.columns(3)
+    col_m4, col_m5, col_m6 = st.columns(3)
+    
+    keys, vals = list(macro_data.keys()), list(macro_data.values())
+    if len(keys) >= 6:
+        with col_m1: st.markdown(f'<div class="macro-card"><div class="macro-title">{keys[0]}</div><div class="macro-value">{vals[0]}</div></div>', unsafe_allow_html=True)
+        with col_m2: st.markdown(f'<div class="macro-card"><div class="macro-title">{keys[1]}</div><div class="macro-value">{vals[1]}</div></div>', unsafe_allow_html=True)
+        with col_m3: st.markdown(f'<div class="macro-card"><div class="macro-title">{keys[2]}</div><div class="macro-value">{vals[2]}</div></div>', unsafe_allow_html=True)
+        with col_m4: st.markdown(f'<div class="macro-card"><div class="macro-title">{keys[3]}</div><div class="macro-value">{vals[3]}</div></div>', unsafe_allow_html=True)
+        with col_m5: st.markdown(f'<div class="macro-card"><div class="macro-title">{keys[4]}</div><div class="macro-value">{vals[4]}</div></div>', unsafe_allow_html=True)
+        with col_m6: st.markdown(f'<div class="macro-card"><div class="macro-title">{keys[5]}</div><div class="macro-value">{vals[5]}</div></div>', unsafe_allow_html=True)
+
+    st.markdown("<hr style='border:1px solid #2a323d;'>", unsafe_allow_html=True)
+    
+    st.markdown("<h4 style='color:white; margin-bottom: 10px;'>📄 Ripoti za Makampuni (Company Reports)</h4>", unsafe_allow_html=True)
+    st.info("Hapa utaweka viungo (Links) vya ripoti za mwaka (Annual Reports) au taarifa za makampuni. Kwasasa ni mfano.")
+    
+    # Mfano wa Ripoti (Unaweza kubadilisha hizi link baadaye)
+    reports = {
+        "CRDB Annual Report 2023": "https://www.crdbbank.co.tz/investor-relations",
+        "NMB Annual Report 2023": "https://www.nmbbank.co.tz/investor-relations",
+        "Vodacom Annual Report 2023": "https://www.vodacom.co.tz/about-us/investor-relations"
+    }
+    
+    for name, link in reports.items():
+        st.markdown(f"🔗 [{name}]({link})")
