@@ -59,7 +59,9 @@ st.markdown(f'''
     </style>
 ''', unsafe_allow_html=True)
 
-@st.cache_data(ttl=60) 
+# =====================================================================
+# HAPA: Nimeondoa cache_data ili App isome data mpya kila wakati
+# =====================================================================
 def load_data():
     try:
         with open("data.json", "r") as f: data = json.load(f)
@@ -87,7 +89,6 @@ def load_data():
         return df.sort_values(['symbol', 'date'])
     except: return pd.DataFrame()
 
-@st.cache_data(ttl=60)
 def load_macro():
     try:
         with open("macro_data.json", "r") as f: return json.load(f)
@@ -144,7 +145,6 @@ def analyze_stock(sdf):
 # ================= SIDEBAR =================
 st.sidebar.title("📈 BXStockView")
 st.sidebar.markdown("---")
-# HAPA: Nimerudisha ile menyu ya Market Pulse
 page = st.sidebar.radio("**Menyu:**", ["📊 Chart Analysis", "🔎 Market Screener", "📰 Market Pulse & Reports"])
 
 if page == "📊 Chart Analysis":
@@ -218,7 +218,6 @@ elif page == "🔎 Market Screener":
         if len(sdf) > 0:
             score, _, _ = analyze_stock(sdf)
             
-            # HAPA: Tunachukua siku ya mwisho ambayo hisa hii ilifanya biashara (Volume > 0)
             sdf_with_vol = sdf[sdf['volume'] > 0]
             last_trade_date = sdf_with_vol['date'].max() if not sdf_with_vol.empty else sdf['date'].max()
             
@@ -263,9 +262,6 @@ elif page == "🔎 Market Screener":
     }).background_gradient(subset=['BX AI Score', 'Mabadiliko (%)'], cmap='RdYlGn'), use_container_width=True, height=600)
 
 elif page == "📰 Market Pulse & Reports":
-    # =====================================================================
-    # UKURASA WA MACRO NA RIPOTI
-    # =====================================================================
     st.markdown("<h2 style='color:white;'>Market Pulse & Reports</h2>", unsafe_allow_html=True)
     st.markdown("<p style='color:#8b949e;'>Taarifa za Uchumi (BOT) na Ripoti za Makampuni.</p>", unsafe_allow_html=True)
 
