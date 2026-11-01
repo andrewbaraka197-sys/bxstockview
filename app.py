@@ -14,24 +14,45 @@ UP_A, DOWN_A = "rgba(38,166,154,0.5)", "rgba(239,83,80,0.5)"
 BG, GRID, TXT = "#131722", "#1e222d", "#d1d4dc"
 LINE_COLOR = "#2962ff"
 
+# Kamusi ya Majina, Nembo na Sekta
 COMPANY_DATA = {
     "CRDB": {"name": "CRDB Bank Plc", "domain": "crdbbank.co.tz"},
     "NMB": {"name": "NMB Bank Plc", "domain": "nmbbank.co.tz"},
     "VODA": {"name": "Vodacom Tanzania", "domain": "vodacom.co.tz"},
     "TBL": {"name": "Tanzania Breweries", "domain": "tbl.co.tz"},
     "KCB": {"name": "KCB Bank (Kenya)", "domain": "kcbgroup.com"},
-    "TPCC": {"name": "Tanzania Portland Cement", "domain": "twigacement.com"},
+    "TPCC": {"name": "Tanzania Portland Cement (Twiga)", "domain": "twigacement.com"},
     "TOL": {"name": "TOL Gases Ltd", "domain": "tol.co.tz"},
     "TCC": {"name": "Tanzania Cigarette Co", "domain": "tcc.co.tz"},
     "DCB": {"name": "DCB Commercial Bank", "domain": "dcbbank.co.tz"},
     "SWIS": {"name": "Swissport Tanzania", "domain": "swissport.com"},
     "NICO": {"name": "National Investment Co", "domain": "nico.co.tz"},
+    "TPLC": {"name": "Tanga Cement Plc", "domain": "tangacement.co.tz"},
 }
 
 # =====================================================================
-# HAPA: Orodha ya hisa zisizotakiwa (Zimeondolewa au Maneno ya Uongo)
+# 1. MFUMO WA KUBADILISHA MAJINA (ALIASES)
+# Hapa tunaunganisha majina ya zamani na mapya
 # =====================================================================
-DELISTED_SYMBOLS = ["ACA", "KA", "JATU", "DOWNLOAD", "DSEI", "TCCIA"]
+SYMBOL_ALIASES = {
+    "TCCL": "TPCC",        # Twiga Cement ilikuwa TCCL
+    "TWIGA": "TPCC",       # Twiga Cement ilikuwa TWIGA
+    "SIMBA": "TPCC",       # Jina la zamani la Twiga
+    "TCPLC": "TPLC",       # Tanga Cement
+    "TCC": "TCC",          # Tanzania Cigarette
+    "VERTEX ETF": "VERTEX-ETF",
+    "ITRUST ETF": "ITRUST-ETF",
+    "SWISS": "SWIS",
+    "MUCOB": "MUCOBA"
+}
+
+# Orodha ya hisa halali zilizopo DSE kwa sasa (2026)
+VALID_DSE_SYMBOLS = [
+    "DSE", "CRDB", "DCB", "EABL", "JHL", "KA", "KCB", "MBP", "NICO", "NMB", 
+    "NMG", "PAL", "SWIS", "TBL", "TPLC", "TOL", "TTP", "SWALA", "USL", 
+    "MKCB", "MCB", "YETU", "MUCOBA", "VODA", "AFRIPRISE", "JATU", "TCC", "TPCC",
+    "VERTEX-ETF", "ITRUST-ETF", "IEACLC-ETF", "ZAN-ETF", "ZAN TANZANIA ETF"
+]
 # =====================================================================
 
 def get_logo_html(sym, domain, size=50):
@@ -56,11 +77,16 @@ st.markdown(f'''
 def load_data():
     try:
         with open("data.json", "r") as f: data = json.load(f)
+        
         all_rows = []
         for stock in data:
-            sym = stock['symbol']
-            # HAPA: Tunachuja zile zilizo kwenye DELISTED_SYMBOLS
-            if sym in DELISTED_SYMBOLS:
+            raw_sym = stock['symbol'].strip().upper()
+            
+            # 1. Badilisha jina la zamani kuwa jipya (Kama lipo)
+            sym = SYMBOL_ALIASES.get(raw_sym, raw_sym)
+            
+            # 2. Chuja zisizopo kwenye orodha halali (Kama DOWNLOAD, ABG, ACA)
+            if sym not in VALID_DSE_SYMBOLS:
                 continue
                 
             chart_data = stock.get('chart_data', [])
@@ -71,8 +97,21 @@ def load_data():
                     'volume': day.get('volume', 0), 'rsi_14': day.get('rsi_14', 50.0),
                     'change': stock.get('change', 0.0), 'pct': stock.get('pct', 0.0)
                 })
-        return pd.DataFrame(all_rows).sort_values(['symbol', 'date'])
-    except: return pd.DataFrame()
+        
+        df = pd.DataFrame(all_rows)
+        
+        if df.empty: return df
+        
+        # 3. Unganisha data za majina yaliyobadilishwa (Ili wasijirudie kwenye list)
+        # Kwa kuwa sasa wana jina moja, tunapanga kwa tarehe na kuondoa marudio
+        df = df.groupby(['symbol', 'date']).agg({
+            'open': 'first', 'high': 'max', 'low': 'min', 'close': 'last',
+            'volume': 'sum', 'rsi_14': 'last', 'change': 'last', 'pct': 'last'
+        }).reset_index()
+        
+        return df.sort_values(['symbol', 'date'])
+    except Exception as e:
+        return pd.DataFrame()
 
 df_master = load_data()
 
@@ -198,10 +237,6 @@ elif page == "🔎 Market Screener":
     
     latest_data = []
     for sym in df_master['symbol'].unique():
-        # Hii pia inachuja hapa kwa usalama zaidi
-        if sym in DELISTED_SYMBOLS:
-            continue
-            
         sdf = df_master[df_master['symbol'] == sym].sort_values('date')
         if len(sdf) > 0:
             score, _, _ = analyze_stock(sdf)
