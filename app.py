@@ -53,15 +53,23 @@ st.markdown(f'''
     .stApp {{ background-color: {BG}; color: {TXT}; }}
     .css-1d391kg {{ background-color: #1e222d; }}
     .stRadio label {{ color: {TXT} !important; }}
-    .macro-card {{ background-color: #151a21; border: 1px solid #2a323d; border-radius: 8px; padding: 15px; text-align: center; }}
-    .macro-title {{ font-size: 13px; color: #8b949e; margin-bottom: 5px; font-weight: bold; }}
-    .macro-value {{ font-size: 20px; color: #00f2fe; font-weight: bold; font-family: 'Roboto Mono', monospace; }}
+    
+    /* CSS Mpya kwa ajili ya kadi za Macro */
+    .macro-card {{
+        background-color: #151a21;
+        border: 1px solid #2a323d;
+        border-radius: 8px;
+        padding: 15px;
+        text-align: center;
+        box-shadow: 0 4px 6px rgba(0,0,0,0.3);
+        height: 100%;
+    }}
+    .macro-title {{ font-size: 13px; color: #8b949e; margin-bottom: 5px; font-weight: bold; text-transform: uppercase; }}
+    .macro-value {{ font-size: 24px; color: #00f2fe; font-weight: bold; font-family: 'Roboto Mono', monospace; margin-bottom: 5px; }}
+    .macro-desc {{ font-size: 11px; color: #a0aec0; }}
     </style>
 ''', unsafe_allow_html=True)
 
-# =====================================================================
-# HAPA: Nimeondoa cache_data ili App isome data mpya kila wakati
-# =====================================================================
 def load_data():
     try:
         with open("data.json", "r") as f: data = json.load(f)
@@ -89,13 +97,21 @@ def load_data():
         return df.sort_values(['symbol', 'date'])
     except: return pd.DataFrame()
 
-def load_macro():
-    try:
-        with open("macro_data.json", "r") as f: return json.load(f)
-    except: return {"CBR (Benki Kuu)": "6.25%", "Inflation (Mfumuko wa Bei)": "4.30%", "T-Bill (Siku 91)": "3.64%", "TZS/USD (Kiwango cha Fedha)": "2,636.74", "DSEI Index": "4,539.27", "Ukuaji wa GDP": "6.00%"}
+# =====================================================================
+# TAKWIMU HALISI ZA BOT (Kutoka Picha Uliyotuma)
+# =====================================================================
+def get_macro_data():
+    return {
+        "CBR (Benki Kuu)": {"val": "6.25%", "desc": "Riba ya Benki Kuu (Q4 2026)"},
+        "Inflation (Mfumuko)": {"val": "4.30%", "desc": "Mfumuko wa bei (Sept 2026)"},
+        "GDP Growth (Uchumi)": {"val": "6.50%", "desc": "Ukuaji wa Uchumi (Q2 2026)"},
+        "TZS / USD": {"val": "2,628.24", "desc": "Kiwango cha Fedha (Nov 2026)"},
+        "Riba ya Bond": {"val": "8.75%", "desc": "Riba ya Dhama za Serikali"},
+        "7-Day Interbank": {"val": "N/A", "desc": "Riba ya Mikopo ya Benki"}
+    }
 
 df_master = load_data()
-macro_data = load_macro()
+macro_data = get_macro_data()
 
 if df_master.empty:
     st.error("Data haipo. Tafadhali hakikisha 'data.json' ipo GitHub.")
@@ -145,7 +161,7 @@ def analyze_stock(sdf):
 # ================= SIDEBAR =================
 st.sidebar.title("📈 BXStockView")
 st.sidebar.markdown("---")
-page = st.sidebar.radio("**Menyu:**", ["📊 Chart Analysis", "🔎 Market Screener", "📰 Market Pulse & Reports"])
+page = st.sidebar.radio("**Menyu:**", ["📊 Chart Analysis", "🔎 Market Screener", "📰 Market Pulse"])
 
 if page == "📊 Chart Analysis":
     symbols = df_master['symbol'].unique().tolist()
@@ -261,22 +277,31 @@ elif page == "🔎 Market Screener":
         'Mabadiliko (%)': '{:+.2f}%', 'RSI (14)': '{:.1f}', 'Fedha (TZS)': '{:,.0f}'
     }).background_gradient(subset=['BX AI Score', 'Mabadiliko (%)'], cmap='RdYlGn'), use_container_width=True, height=600)
 
-elif page == "📰 Market Pulse & Reports":
+elif page == "📰 Market Pulse":
     st.markdown("<h2 style='color:white;'>Market Pulse & Reports</h2>", unsafe_allow_html=True)
-    st.markdown("<p style='color:#8b949e;'>Taarifa za Uchumi (BOT) na Ripoti za Makampuni.</p>", unsafe_allow_html=True)
+    st.markdown("<p style='color:#8b949e;'>Takwimu halisi za Uchumi (BOT) na Ripoti za Makampuni.</p>", unsafe_allow_html=True)
 
-    st.markdown("<h4 style='color:white; margin-bottom: 10px;'>🌍 Macroeconomic Indicators (BOT)</h4>", unsafe_allow_html=True)
+    st.markdown("<h4 style='color:white; margin-bottom: 15px;'>🌍 Viashiria vya Uchumi (BOT)</h4>", unsafe_allow_html=True)
+    
+    # Tunatengeneza Grid ya kadi 6
     col_m1, col_m2, col_m3 = st.columns(3)
     col_m4, col_m5, col_m6 = st.columns(3)
     
-    keys, vals = list(macro_data.keys()), list(macro_data.values())
-    if len(keys) >= 6:
-        with col_m1: st.markdown(f'<div class="macro-card"><div class="macro-title">{keys[0]}</div><div class="macro-value">{vals[0]}</div></div>', unsafe_allow_html=True)
-        with col_m2: st.markdown(f'<div class="macro-card"><div class="macro-title">{keys[1]}</div><div class="macro-value">{vals[1]}</div></div>', unsafe_allow_html=True)
-        with col_m3: st.markdown(f'<div class="macro-card"><div class="macro-title">{keys[2]}</div><div class="macro-value">{vals[2]}</div></div>', unsafe_allow_html=True)
-        with col_m4: st.markdown(f'<div class="macro-card"><div class="macro-title">{keys[3]}</div><div class="macro-value">{vals[3]}</div></div>', unsafe_allow_html=True)
-        with col_m5: st.markdown(f'<div class="macro-card"><div class="macro-title">{keys[4]}</div><div class="macro-value">{vals[4]}</div></div>', unsafe_allow_html=True)
-        with col_m6: st.markdown(f'<div class="macro-card"><div class="macro-title">{keys[5]}</div><div class="macro-value">{vals[5]}</div></div>', unsafe_allow_html=True)
+    keys = list(macro_data.keys())
+    vals = list(macro_data.values())
+
+    with col_m1:
+        st.markdown(f'<div class="macro-card"><div class="macro-title">{keys[0]}</div><div class="macro-value">{vals[0]["val"]}</div><div class="macro-desc">{vals[0]["desc"]}</div></div>', unsafe_allow_html=True)
+    with col_m2:
+        st.markdown(f'<div class="macro-card"><div class="macro-title">{keys[1]}</div><div class="macro-value">{vals[1]["val"]}</div><div class="macro-desc">{vals[1]["desc"]}</div></div>', unsafe_allow_html=True)
+    with col_m3:
+        st.markdown(f'<div class="macro-card"><div class="macro-title">{keys[2]}</div><div class="macro-value">{vals[2]["val"]}</div><div class="macro-desc">{vals[2]["desc"]}</div></div>', unsafe_allow_html=True)
+    with col_m4:
+        st.markdown(f'<div class="macro-card"><div class="macro-title">{keys[3]}</div><div class="macro-value">{vals[3]["val"]}</div><div class="macro-desc">{vals[3]["desc"]}</div></div>', unsafe_allow_html=True)
+    with col_m5:
+        st.markdown(f'<div class="macro-card"><div class="macro-title">{keys[4]}</div><div class="macro-value">{vals[4]["val"]}</div><div class="macro-desc">{vals[4]["desc"]}</div></div>', unsafe_allow_html=True)
+    with col_m6:
+        st.markdown(f'<div class="macro-card"><div class="macro-title">{keys[5]}</div><div class="macro-value">{vals[5]["val"]}</div><div class="macro-desc">{vals[5]["desc"]}</div></div>', unsafe_allow_html=True)
 
     st.markdown("<hr style='border:1px solid #2a323d;'>", unsafe_allow_html=True)
     
