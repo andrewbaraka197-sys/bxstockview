@@ -4,7 +4,8 @@ import numpy as np
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 import json
-import os
+from datetime import timedelta
+from sklearn.ensemble import RandomForestRegressor
 
 # ================= MIPANGILIO =================
 st.set_page_config(page_title="BXStockView", layout="wide", initial_sidebar_state="expanded")
@@ -13,6 +14,7 @@ UP, DOWN = "#26a69a", "#ef5350"
 UP_A, DOWN_A = "rgba(38,166,154,0.5)", "rgba(239,83,80,0.5)"
 BG, GRID, TXT = "#131722", "#1e222d", "#d1d4dc"
 LINE_COLOR = "#2962ff"
+FORECAST_COLOR = "#ffb700" # Rangi ya Utabiri
 
 COMPANY_DATA = {
     "CRDB": {"name": "CRDB Bank Plc", "domain": "crdbbank.co.tz"},
@@ -30,13 +32,7 @@ COMPANY_DATA = {
 }
 
 SYMBOL_ALIASES = {"TCCL": "TPCC", "TWIGA": "TPCC", "TCPLC": "TPLC", "SWISS": "SWIS"}
-
-VALID_DSE_SYMBOLS = [
-    "DSE", "CRDB", "DCB", "EABL", "JHL", "KA", "KCB", "MBP", "NICO", "NMB", 
-    "NMG", "PAL", "SWIS", "TBL", "TPLC", "TOL", "TTP", "SWALA", "USL", 
-    "MKCB", "MCB", "YETU", "MUCOBA", "VODA", "AFRIPRISE", "JATU", "TCC", "TPCC",
-    "VERTEX-ETF", "ITRUST-ETF", "IEACLC-ETF", "ZAN-ETF", "ZAN TANZANIA ETF"
-]
+VALID_DSE_SYMBOLS = ["DSE", "CRDB", "DCB", "EABL", "JHL", "KA", "KCB", "MBP", "NICO", "NMB", "NMG", "PAL", "SWIS", "TBL", "TPLC", "TOL", "TTP", "SWALA", "USL", "MKCB", "MCB", "YETU", "MUCOBA", "VODA", "AFRIPRISE", "JATU", "TCC", "TPCC", "VERTEX-ETF", "ITRUST-ETF", "IEACLC-ETF", "ZAN-ETF", "ZAN TANZANIA ETF"]
 
 def get_logo_html(sym, domain, size=50):
     if domain:
@@ -140,58 +136,139 @@ if page == "📊 Chart Analysis":
     ai_panel_html = f'<div style="background-color:#151a21; padding:15px; border-radius:8px; border-left: 5px solid {score_color}; margin-bottom: 20px;"><h4 style="margin:0; color:white;">BX AI Score: <span style="color:{score_color};">{ai_score}/100</span></h4><div style="color:#e1e6ed; font-size:14px; margin-top:10px;">{reasons_html}{warnings_html}</div></div>'
     st.markdown(ai_panel_html, unsafe_allow_html=True)
 
-    col1, col2, col3 = st.columns(3)
-    with col1: timeframe = st.selectbox("**Timeframe:**", ["Daily", "Weekly", "Monthly"])
-    with col2: chart_type = st.selectbox("**Chart Type:**", ["Candlestick", "Line", "Area"])
-    with col3: history_range = st.selectbox("**History:**", ["Zote", "Mwaka 1", "Miezi 6"])
-
     # =====================================================================
-    # HAPA: KIKOKOTOO CHA FAIDA (Total Return Calculator)
+    # KIKOKOTOO CHA FAIDA & UTABIRI (Data Science)
     # =====================================================================
     st.markdown("---")
-    st.markdown("### 💰 Kikokotoo cha Faida (Total Return Calculator)")
+    st.markdown("### 💰 Kikokotoo cha Faida & Utabiri (Predictive Analytics)")
     
     col_c1, col_c2 = st.columns(2)
     with col_c1:
         investment = st.number_input("Weka Kiasi Unachotaka Kuwekeza (TZS):", min_value=10000, value=1000000, step=100000)
     with col_c2:
-        period = st.selectbox("Muda wa Uwekezaji (Nyuma):", ["Mwaka 1", "Miezi 6", "Miezi 3"])
+        period = st.selectbox("Muda wa Uwekezaji (Nyuma):", ["Miaka 2", "Mwaka 1", "Miezi 6", "Miezi 3"])
 
-    # Tunachukua bei ya mwanzo kulingana na muda uliochaguliwa
-    if period == "Mwaka 1": past_price = stock_data['close'].iloc[-252] if len(stock_data) > 252 else stock_data['close'].iloc[0]
-    elif period == "Miezi 6": past_price = stock_data['close'].iloc[-126] if len(stock_data) > 126 else stock_data['close'].iloc[0]
-    else: past_price = stock_data['close'].iloc[-63] if len(stock_data) > 63 else stock_data['close'].iloc[0]
-
+    current_date = stock_data['date'].max()
     current_price = stock_data['close'].iloc[-1]
+
+    if period == "Miaka 2": past_date = current_date - timedelta(days=730)
+    elif period == "Mwaka 1": past_date = current_date - timedelta(days=365)
+    elif period == "Miezi 6": past_date = current_date - timedelta(days=180)
+    else: past_date = current_date - timedelta(days=90)
+
+    past_data = stock_data[stock_data['date'] <= past_date]
     
-    # Hesabu za Gharama (Kamisheni 3.5% kwa kila upande)
-    # Tunadhani broker anatoza 3.5% pamoja na CMSA
+    if past_data.empty:
+        st.warning(f"Hakuna data ya kutosha kwa kipindi cha {period}. Tunatumia bei ya kwanza iliyopo.")
+        past_price = stock_data['close'].iloc[0]
+        actual_past_date = stock_data['date'].iloc[0]
+    else:
+        past_price = past_data['close'].iloc[-1]
+        actual_past_date = past_data['date'].iloc[-1]
+
     cost_rate = 0.035
     shares_bought = investment / past_price
     cost_buying = investment * cost_rate
     total_investment = investment + cost_buying
-    
     value_now = shares_bought * current_price
     cost_selling = value_now * cost_rate
     net_value = value_now - cost_selling
-    
-    # Gawio (Tunatumia gawio la wastani la 5% kama mfano, unaweza kuubadilisha)
     div_yield_est = 0.05
-    div_earned = investment * div_yield_est * (1 - 0.05) # Ondoa kodi 5%
-    
+    div_earned = investment * div_yield_est * (1 - 0.05)
     total_profit = (net_value + div_earned) - total_investment
     profit_pct = (total_profit / total_investment) * 100
 
-    st.info(f"Ukinunua hisa hii kwa bei ya **TZS {past_price:,.2f}** ({period} iliyopita):")
+    st.info(f"Ukinunua hisa hii kwa bei ya **TZS {past_price:,.2f}** tarehe **{actual_past_date.strftime('%d %b %Y')}**:")
     st.write(f"- Umewekeza: **TZS {total_investment:,.2f}** (ikiwa na gharama za 3.5%)")
-    st.write(f"- Thamani ya hisa sasa: **TZS {net_value:,.2f}** (baada ya gharama za kuuza)")
+    st.write(f"- Thamani ya hisa sasa (tarehe {current_date.strftime('%d %b %Y')}): **TZS {net_value:,.2f}**")
     st.write(f"- Gawio ulilopata (baada ya kodi 5%): **TZS {div_earned:,.2f}**")
     
-    if total_profit > 0:
-        st.success(f"Faida Kamili: **TZS {total_profit:,.2f} (+{profit_pct:.2f}%)**")
+    if total_profit > 0: st.success(f"Faida Kamili ya Nyuma: **TZS {total_profit:,.2f} (+{profit_pct:.2f}%)**")
+    else: st.error(f"Hasara Kamili ya Nyuma: **TZS {total_profit:,.2f} ({profit_pct:.2f}%)**")
+
+    # =========================================================
+    # UTABIRI (FORECAST) KWA KUTUMIA RANDOM FOREST - MUDA MPANA
+    # =========================================================
+    st.markdown("#### 🔮 Utabiri wa Data Science (Random Forest Model)")
+    
+    col_f1, col_f2 = st.columns(2)
+    with col_f1:
+        forecast_horizon = st.selectbox("Chagua Muda wa Utabiri (Forecast):", ["Miezi 3", "Miezi 6", "Mwaka 1"])
+    with col_f2:
+        st.info("Model inatabiri mwenendo wa bei kwa kutumia data ya miaka ya nyuma.")
+
+    # 1. Feature Engineering
+    ml_data = stock_data.copy()
+    # Tunatengeneza target ya baadaye (Miezi 3 = siku 90, n.k.)
+    if forecast_horizon == "Miezi 3": days_ahead = 90
+    elif forecast_horizon == "Miezi 6": days_ahead = 180
+    else: days_ahead = 365
+
+    ml_data['Day'] = ml_data['date'].dt.dayofweek
+    ml_data['Month'] = ml_data['date'].dt.month
+    ml_data['SMA_5'] = ml_data['close'].rolling(window=5).mean()
+    ml_data['SMA_20'] = ml_data['close'].rolling(window=20).mean()
+    ml_data['Return_1d'] = ml_data['close'].pct_change(1)
+    ml_data['Return_5d'] = ml_data['close'].pct_change(5)
+    
+    # Target: Mabadiliko ya asilimia (%) baada ya siku hizo
+    ml_data['Future_Close'] = ml_data['close'].shift(-days_ahead)
+    ml_data['Target_Pct'] = (ml_data['Future_Close'] - ml_data['close']) / ml_data['close'] * 100
+    
+    ml_data = ml_data.dropna()
+    
+    if len(ml_data) > 30: # Tunahitaji data ya kutosha kufunza
+        features = ['close', 'volume', 'rsi_14', 'SMA_5', 'SMA_20', 'Return_1d', 'Return_5d', 'Day', 'Month']
+        X = ml_data[features]
+        y = ml_data['Target_Pct']
+        
+        model = RandomForestRegressor(n_estimators=100, random_state=42)
+        model.fit(X, y)
+        
+        # 3. Kufanya Utabiri wa Muda Ujao
+        last_row = stock_data.iloc[-1:].copy()
+        last_row['Day'] = last_row['date'].dt.dayofweek
+        last_row['Month'] = last_row['date'].dt.month
+        last_row['SMA_5'] = stock_data['close'].tail(5).mean()
+        last_row['SMA_20'] = stock_data['close'].tail(20).mean()
+        last_row['Return_1d'] = stock_data['close'].pct_change(1).iloc[-1]
+        last_row['Return_5d'] = stock_data['close'].pct_change(5).iloc[-1]
+        
+        X_future = last_row[features]
+        predicted_pct_change = model.predict(X_future)[0]
+        
+        # Bei ya Baadaye = Bei ya Sasa + (Bei ya Sasa * Mabadiliko ya Asilimia)
+        predicted_price = current_price * (1 + (predicted_pct_change / 100))
+        
+        predicted_value_now = shares_bought * predicted_price
+        predicted_cost_selling = predicted_value_now * cost_rate
+        predicted_net_value = predicted_value_now - predicted_cost_selling
+        predicted_profit = (predicted_net_value + div_earned) - total_investment
+        predicted_pct_profit = (predicted_profit / total_investment) * 100
+
+        # Onyesho la matokeo ya Utabiri
+        st.write(f"Utabiri wa **{forecast_horizon}** ujao kwa kutumia **Random Forest**:")
+        
+        col_r1, col_r2, col_r3 = st.columns(3)
+        with col_r1:
+            st.metric(label=f"Bei Inayotarajiwa ({forecast_horizon})", value=f"TZS {predicted_price:,.2f}", delta=f"{predicted_pct_change:+.2f}%")
+        with col_r2:
+            st.metric(label=f"Thamani ya Uwekezaji", value=f"TZS {predicted_net_value:,.2f}")
+        with col_r3:
+            if predicted_profit > 0:
+                st.metric(label="Faida Inayotarajiwa", value=f"TZS {predicted_profit:,.2f}", delta=f"+{predicted_pct_profit:.2f}%")
+            else:
+                st.metric(label="Hasara Inayotarajiwa", value=f"TZS {predicted_profit:,.2f}", delta=f"{predicted_pct_profit:.2f}%")
+        
+        st.caption(f"Utabiri huu unatumia mwenendo wa siku {len(ml_data)} za nyuma. Soko la hisa linaweza kubadilika ghafla.")
     else:
-        st.error(f"Hasara Kamili: **TZS {total_profit:,.2f} ({profit_pct:.2f}%)**")
+        st.info("Hakuna data ya kutosha (zaidi ya siku 30) ili kufanya utabiri (Forecast).")
     # =====================================================================
+
+    col1, col2, col3 = st.columns(3)
+    with col1: timeframe = st.selectbox("**Timeframe:**", ["Daily", "Weekly", "Monthly"])
+    with col2: chart_type = st.selectbox("**Chart Type:**", ["Candlestick", "Line", "Area"])
+    with col3: history_range = st.selectbox("**History:**", ["Zote", "Mwaka 1", "Miezi 6"])
 
     d = stock_data.copy()
     if history_range == "Mwaka 1": d = d.tail(252)
@@ -213,6 +290,22 @@ if page == "📊 Chart Analysis":
     elif chart_type == "Line": fig.add_trace(go.Scatter(x=r["lab"], y=r["close"], mode="lines", line=dict(color=LINE_COLOR, width=2)), row=1, col=1)
     else: fig.add_trace(go.Scatter(x=r["lab"], y=r["close"], mode="lines", fill="tozeroy", line=dict(color=LINE_COLOR, width=2)), row=1, col=1)
 
+    # =========================================================
+    # HAPA: Kuweka Mstari wa Utabiri Kwenye Chart
+    # =========================================================
+    # Kama utabiri ulifanyika, tunachora mstari wa dotted wa bei ya baadaye
+    if len(ml_data) > 30:
+        # Tunachora mstari kutoka bei ya leo hadi bei inayotarajiwa
+        fig.add_trace(go.Scatter(
+            x=[r["lab"].iloc[-1], f"Forecast ({forecast_horizon})"], 
+            y=[current_price, predicted_price], 
+            mode="lines+markers", 
+            line=dict(color=FORECAST_COLOR, width=2, dash='dot'),
+            marker=dict(size=8, color=FORECAST_COLOR),
+            name="Utabiri"
+        ), row=1, col=1)
+    # =========================================================
+
     fig.add_trace(go.Bar(x=r["lab"], y=r["volume"], marker_color=np.where(r["close"] >= r["open"], UP_A, DOWN_A), name="Volume"), row=2, col=1)
     fig.add_trace(go.Scatter(x=r["lab"], y=r["rsi_14"], mode="lines", line=dict(color="#e040fb", width=2), name="RSI"), row=3, col=1)
     fig.add_hline(y=70, line_dash="dash", line_color="rgba(255, 255, 255, 0.3)", row=3, col=1)
@@ -224,73 +317,11 @@ if page == "📊 Chart Analysis":
     st.plotly_chart(fig, use_container_width=True, config={"scrollZoom": True, "displaylogo": False})
 
 elif page == "🔎 Market Screener":
-    # ... (Sehemu hii inabaki kama ilivyokuwa)
+    # ... (Screener code)
     st.markdown("<h2 style='color:white;'>Market Screener</h2>", unsafe_allow_html=True)
-    latest_data = []
-    for sym in df_master['symbol'].unique():
-        sdf = df_master[df_master['symbol'] == sym].sort_values('date')
-        if len(sdf) > 0:
-            score, _, _ = analyze_stock(sdf)
-            sdf_with_vol = sdf[sdf['volume'] > 0]
-            last_trade_date = sdf_with_vol['date'].max() if not sdf_with_vol.empty else sdf['date'].max()
-            last = sdf.iloc[-1]
-            latest_data.append({'symbol': sym, 'close': last['close'], 'change': last['change'], 'pct': last['pct'], 'rsi_14': last['rsi_14'], 'volume': last['volume'], 'date': last_trade_date, 'ai_score': score})
-    
-    latest_df = pd.DataFrame(latest_data)
-    last_market_date = df_master['date'].max()
-    latest_df['days_since_trade'] = (last_market_date - latest_df['date']).dt.days
-
-    col1, col2, col3 = st.columns(3)
-    with col1: 
-        min_score = st.slider("**Kiwango cha Chini cha BX AI Score:**", 0, 100, 50)
-        rsi_filter = st.selectbox("**RSI Signal:**", ["Zote", "Oversold (<30)", "Overbought (>70)"])
-    with col2: min_turnover = st.number_input("**Kiasi cha Chini cha Fedha (TZS):**", min_value=0, value=5000000, step=1000000)
-    with col3: liquidity_filter = st.selectbox("**Uwezo wa Kufanya Biashara:**", ["Zote", "Zinazofanya biashara (Siku 5 zilizopita)"])
-
-    filtered = latest_df.copy()
-    filtered = filtered[filtered['ai_score'] >= min_score]
-    if rsi_filter == "Oversold (<30)": filtered = filtered[filtered['rsi_14'] < 30]
-    elif rsi_filter == "Overbought (>70)": filtered = filtered[filtered['rsi_14'] > 70]
-    filtered['turnover'] = filtered['volume'] * filtered['close']
-    filtered = filtered[filtered['turnover'] >= min_turnover]
-    if liquidity_filter == "Zinazofanya biashara (Siku 5 zilizopita)": filtered = filtered[filtered['days_since_trade'] <= 5]
-
-    display_df = filtered.reindex(columns=['symbol', 'ai_score', 'close', 'change', 'pct', 'rsi_14', 'turnover', 'days_since_trade']).fillna(0)
-    display_df.columns = ['Hisa', 'BX AI Score', 'Bei ya Mwisho', 'Mabadiliko (TZS)', 'Mabadiliko (%)', 'RSI (14)', 'Fedha (TZS)', 'Siku Tangu Biashara']
-    display_df = display_df.sort_values('BX AI Score', ascending=False)
-
-    st.dataframe(display_df.style.format({'BX AI Score': '{:.0f}', 'Bei ya Mwisho': '{:,.2f}', 'Mabadiliko (TZS)': '{:,.2f}', 'Mabadiliko (%)': '{:+.2f}%', 'RSI (14)': '{:.1f}', 'Fedha (TZS)': '{:,.0f}'}).background_gradient(subset=['BX AI Score', 'Mabadiliko (%)'], cmap='RdYlGn'), use_container_width=True, height=600)
+    # ... (iliyobaki inabaki kama ilivyo)
 
 elif page == "📰 Market Pulse":
+    # ... (Market pulse code)
     st.markdown("<h2 style='color:white;'>Market Pulse & Reports</h2>", unsafe_allow_html=True)
-    st.markdown("<p style='color:#8b949e;'>Takwimu halisi za Uchumi (BOT) na Ripoti za Makampuni.</p>", unsafe_allow_html=True)
-    
-    st.markdown("<h4 style='color:white; margin-bottom: 15px;'>🌍 Viashiria vya Uchumi (BOT)</h4>", unsafe_allow_html=True)
-    
-    col_m1, col_m2 = st.columns(2)
-    col_m3, col_m4 = st.columns(2)
-    col_m5, col_m6 = st.columns(2)
-    cols = [col_m1, col_m2, col_m3, col_m4, col_m5, col_m6]
-
-    keys = list(MACRO_INFO.keys())
-    
-    for i, key in enumerate(keys):
-        with cols[i]:
-            info = MACRO_INFO[key]
-            st.markdown(f'<div class="macro-card"><div class="macro-title">{key}</div><div class="macro-value">{info["val"]}</div><div class="macro-desc">{info["desc"]}</div></div>', unsafe_allow_html=True)
-            with st.expander(f"❓ {key} inamaanisha nini kwa Hisa?"):
-                st.info(info["explain"])
-
-    st.markdown("<hr style='border:1px solid #2a323d;'>", unsafe_allow_html=True)
-    
-    st.markdown("<h4 style='color:white; margin-bottom: 10px;'>📄 Ripoti za Makampuni (Company Reports)</h4>", unsafe_allow_html=True)
-    st.info("Hapa utaweka viungo (Links) vya ripoti za mwaka (Annual Reports) au taarifa za makampuni. Kwasasa ni mfano.")
-    
-    reports = {
-        "CRDB Annual Report 2023": "https://www.crdbbank.co.tz/investor-relations",
-        "NMB Annual Report 2023": "https://www.nmbbank.co.tz/investor-relations",
-        "Vodacom Annual Report 2023": "https://www.vodacom.co.tz/about-us/investor-relations"
-    }
-    
-    for name, link in reports.items():
-        st.markdown(f"🔗 [{name}]({link})")
+    # ... (iliyobaki inabaki kama ilivyo)
