@@ -29,10 +29,7 @@ COMPANY_DATA = {
     "TPLC": {"name": "Tanga Cement Plc", "domain": "tangacement.co.tz"},
 }
 
-SYMBOL_ALIASES = {
-    "TCCL": "TPCC", "TWIGA": "TPCC", "SIMBA": "TPCC",
-    "TCPLC": "TPLC", "SWISS": "SWIS", "MUCOB": "MUCOBA"
-}
+SYMBOL_ALIASES = {"TCCL": "TPCC", "TWIGA": "TPCC", "TCPLC": "TPLC", "SWISS": "SWIS"}
 
 VALID_DSE_SYMBOLS = [
     "DSE", "CRDB", "DCB", "EABL", "JHL", "KA", "KCB", "MBP", "NICO", "NMB", 
@@ -53,17 +50,7 @@ st.markdown(f'''
     .stApp {{ background-color: {BG}; color: {TXT}; }}
     .css-1d391kg {{ background-color: #1e222d; }}
     .stRadio label {{ color: {TXT} !important; }}
-    
-    /* CSS Mpya kwa ajili ya kadi za Macro */
-    .macro-card {{
-        background-color: #151a21;
-        border: 1px solid #2a323d;
-        border-radius: 8px;
-        padding: 15px;
-        text-align: center;
-        box-shadow: 0 4px 6px rgba(0,0,0,0.3);
-        height: 100%;
-    }}
+    .macro-card {{ background-color: #151a21; border: 1px solid #2a323d; border-radius: 8px; padding: 15px; text-align: center; box-shadow: 0 4px 6px rgba(0,0,0,0.3); height: 100%; }}
     .macro-title {{ font-size: 13px; color: #8b949e; margin-bottom: 5px; font-weight: bold; text-transform: uppercase; }}
     .macro-value {{ font-size: 24px; color: #00f2fe; font-weight: bold; font-family: 'Roboto Mono', monospace; margin-bottom: 5px; }}
     .macro-desc {{ font-size: 11px; color: #a0aec0; }}
@@ -77,8 +64,7 @@ def load_data():
         for stock in data:
             raw_sym = stock['symbol'].strip().upper()
             sym = SYMBOL_ALIASES.get(raw_sym, raw_sym)
-            if sym not in VALID_DSE_SYMBOLS:
-                continue
+            if sym not in VALID_DSE_SYMBOLS: continue
             chart_data = stock.get('chart_data', [])
             for day in chart_data:
                 all_rows.append({
@@ -89,74 +75,44 @@ def load_data():
                 })
         df = pd.DataFrame(all_rows)
         if df.empty: return df
-        
-        df = df.groupby(['symbol', 'date']).agg({
-            'open': 'first', 'high': 'max', 'low': 'min', 'close': 'last',
-            'volume': 'sum', 'rsi_14': 'last', 'change': 'last', 'pct': 'last'
-        }).reset_index()
         return df.sort_values(['symbol', 'date'])
     except: return pd.DataFrame()
 
-# =====================================================================
-# TAKWIMU HALISI ZA BOT (Kutoka Picha Uliyotuma)
-# =====================================================================
-def get_macro_data():
-    return {
-        "CBR (Benki Kuu)": {"val": "6.25%", "desc": "Riba ya Benki Kuu (Q4 2026)"},
-        "Inflation (Mfumuko)": {"val": "4.30%", "desc": "Mfumuko wa bei (Sept 2026)"},
-        "GDP Growth (Uchumi)": {"val": "6.50%", "desc": "Ukuaji wa Uchumi (Q2 2026)"},
-        "TZS / USD": {"val": "2,628.24", "desc": "Kiwango cha Fedha (Nov 2026)"},
-        "Riba ya Bond": {"val": "8.75%", "desc": "Riba ya Dhama za Serikali"},
-        "7-Day Interbank": {"val": "N/A", "desc": "Riba ya Mikopo ya Benki"}
-    }
+MACRO_INFO = {
+    "CBR (Benki Kuu)": {"val": "6.25%", "desc": "Riba ya Benki Kuu (Q4 2026)"},
+    "Inflation (Mfumuko)": {"val": "4.30%", "desc": "Mfumuko wa bei (Sept 2026)"},
+    "GDP Growth (Uchumi)": {"val": "6.50%", "desc": "Ukuaji wa Uchumi (Q2 2026)"},
+    "TZS / USD": {"val": "2,628.24", "desc": "Kiwango cha Fedha (Nov 2026)"},
+    "Riba ya Bond": {"val": "8.75%", "desc": "Riba ya Dhama za Serikali"},
+    "7-Day Interbank": {"val": "N/A", "desc": "Riba ya Mikopo ya Benki"}
+}
 
 df_master = load_data()
-macro_data = get_macro_data()
 
 if df_master.empty:
     st.error("Data haipo. Tafadhali hakikisha 'data.json' ipo GitHub.")
     st.stop()
 
-# =====================================================================
-# MANTIKI YA BX AI SCORE
-# =====================================================================
 def analyze_stock(sdf):
     if len(sdf) < 5: return 0, ["Hakuna data ya kutosha."], []
     last = sdf.iloc[-1]
     rsi, close, vol_today = last['rsi_14'], last['close'], last['volume']
     vol_avg = sdf['volume'].tail(20).mean()
-    
-    score = 50
-    reasons, warnings = [], []
+    score = 50; reasons, warnings = [], []
 
-    if rsi < 30:
-        score += 20
-        reasons.append("✅ RSI iko chini ya 30 (Oversold) - Fursa nzuri ya kununua.")
-    elif rsi > 70:
-        score -= 20
-        warnings.append("⚠️ RSI iko juu ya 70 (Overbought) - Hatari ya kushuka.")
-    else:
-        reasons.append("✅ RSI iko katika eneo la kati (Neutral).")
+    if rsi < 30: score += 20; reasons.append("✅ RSI iko chini ya 30 (Oversold).")
+    elif rsi > 70: score -= 20; warnings.append("⚠️ RSI iko juu ya 70 (Overbought).")
+    else: reasons.append("✅ RSI iko katika eneo la kati (Neutral).")
 
-    if vol_today > (vol_avg * 1.5):
-        score += 15
-        reasons.append("✅ Volume imeongezeka sana leo - Wanunuzi wengi wanaingia.")
-    elif vol_today == 0:
-        score -= 30
-        warnings.append("🚨 Hakuna biashara leo (Volume = 0) - Hisa hii ni ngumu kuuza (Illiquid).")
+    if vol_today > (vol_avg * 1.5): score += 15; reasons.append("✅ Volume imeongezeka sana leo.")
+    elif vol_today == 0: score -= 30; warnings.append("🚨 Hakuna biashara leo (Volume = 0).")
 
     if len(sdf) > 50:
         sma50 = sdf['close'].tail(50).mean()
-        if close > sma50:
-            score += 15
-            reasons.append("✅ Bei iko juu ya wastani wa siku 50 (Trend ni Nzuri).")
-        else:
-            score -= 15
-            warnings.append("⚠️ Bei iko chini ya wastani wa siku 50 (Trend ni Mbaya).")
+        if close > sma50: score += 15; reasons.append("✅ Bei iko juu ya wastani wa siku 50.")
+        else: score -= 15; warnings.append("⚠️ Bei iko chini ya wastani wa siku 50.")
 
-    score = max(0, min(100, score))
-    return score, reasons, warnings
-# =====================================================================
+    return max(0, min(100, score)), reasons, warnings
 
 # ================= SIDEBAR =================
 st.sidebar.title("📈 BXStockView")
@@ -177,19 +133,65 @@ if page == "📊 Chart Analysis":
 
     stock_data = df_master[df_master['symbol'] == selected_sym].sort_values('date')
     ai_score, reasons, warnings = analyze_stock(stock_data)
-    
     score_color = "#00e676" if ai_score >= 70 else "#ffb700" if ai_score >= 40 else "#ff5252"
     
     reasons_html = "".join([f'<div style="margin-bottom: 4px;">• {r}</div>' for r in reasons])
     warnings_html = "".join([f'<div style="margin-bottom: 4px; color:#ff9800;">• {w}</div>' for w in warnings])
-    
-    ai_panel_html = f'<div style="background-color:#151a21; padding:15px; border-radius:8px; border-left: 5px solid {score_color}; margin-bottom: 20px;"><h4 style="margin:0; color:white;">BX AI Score: <span style="color:{score_color};">{ai_score}/100</span></h4><p style="color:#8b949e; margin:5px 0 10px 0; font-size:14px;">Mchanganuo wa haraka:</p><div style="color:#e1e6ed; font-size:14px;">{reasons_html}{warnings_html}</div></div>'
+    ai_panel_html = f'<div style="background-color:#151a21; padding:15px; border-radius:8px; border-left: 5px solid {score_color}; margin-bottom: 20px;"><h4 style="margin:0; color:white;">BX AI Score: <span style="color:{score_color};">{ai_score}/100</span></h4><div style="color:#e1e6ed; font-size:14px; margin-top:10px;">{reasons_html}{warnings_html}</div></div>'
     st.markdown(ai_panel_html, unsafe_allow_html=True)
 
     col1, col2, col3 = st.columns(3)
     with col1: timeframe = st.selectbox("**Timeframe:**", ["Daily", "Weekly", "Monthly"])
     with col2: chart_type = st.selectbox("**Chart Type:**", ["Candlestick", "Line", "Area"])
     with col3: history_range = st.selectbox("**History:**", ["Zote", "Mwaka 1", "Miezi 6"])
+
+    # =====================================================================
+    # HAPA: KIKOKOTOO CHA FAIDA (Total Return Calculator)
+    # =====================================================================
+    st.markdown("---")
+    st.markdown("### 💰 Kikokotoo cha Faida (Total Return Calculator)")
+    
+    col_c1, col_c2 = st.columns(2)
+    with col_c1:
+        investment = st.number_input("Weka Kiasi Unachotaka Kuwekeza (TZS):", min_value=10000, value=1000000, step=100000)
+    with col_c2:
+        period = st.selectbox("Muda wa Uwekezaji (Nyuma):", ["Mwaka 1", "Miezi 6", "Miezi 3"])
+
+    # Tunachukua bei ya mwanzo kulingana na muda uliochaguliwa
+    if period == "Mwaka 1": past_price = stock_data['close'].iloc[-252] if len(stock_data) > 252 else stock_data['close'].iloc[0]
+    elif period == "Miezi 6": past_price = stock_data['close'].iloc[-126] if len(stock_data) > 126 else stock_data['close'].iloc[0]
+    else: past_price = stock_data['close'].iloc[-63] if len(stock_data) > 63 else stock_data['close'].iloc[0]
+
+    current_price = stock_data['close'].iloc[-1]
+    
+    # Hesabu za Gharama (Kamisheni 3.5% kwa kila upande)
+    # Tunadhani broker anatoza 3.5% pamoja na CMSA
+    cost_rate = 0.035
+    shares_bought = investment / past_price
+    cost_buying = investment * cost_rate
+    total_investment = investment + cost_buying
+    
+    value_now = shares_bought * current_price
+    cost_selling = value_now * cost_rate
+    net_value = value_now - cost_selling
+    
+    # Gawio (Tunatumia gawio la wastani la 5% kama mfano, unaweza kuubadilisha)
+    div_yield_est = 0.05
+    div_earned = investment * div_yield_est * (1 - 0.05) # Ondoa kodi 5%
+    
+    total_profit = (net_value + div_earned) - total_investment
+    profit_pct = (total_profit / total_investment) * 100
+
+    st.info(f"Ukinunua hisa hii kwa bei ya **TZS {past_price:,.2f}** ({period} iliyopita):")
+    st.write(f"- Umewekeza: **TZS {total_investment:,.2f}** (ikiwa na gharama za 3.5%)")
+    st.write(f"- Thamani ya hisa sasa: **TZS {net_value:,.2f}** (baada ya gharama za kuuza)")
+    st.write(f"- Gawio ulilopata (baada ya kodi 5%): **TZS {div_earned:,.2f}**")
+    
+    if total_profit > 0:
+        st.success(f"Faida Kamili: **TZS {total_profit:,.2f} (+{profit_pct:.2f}%)**")
+    else:
+        st.error(f"Hasara Kamili: **TZS {total_profit:,.2f} ({profit_pct:.2f}%)**")
+    # =====================================================================
 
     d = stock_data.copy()
     if history_range == "Mwaka 1": d = d.tail(252)
@@ -207,12 +209,9 @@ if page == "📊 Chart Analysis":
     r["lab"] = r["date"].dt.strftime("%d %b %y")
 
     fig = make_subplots(rows=3, cols=1, shared_xaxes=True, vertical_spacing=0.03, row_heights=[0.6, 0.15, 0.25])
-    if chart_type == "Candlestick":
-        fig.add_trace(go.Candlestick(x=r["lab"], open=r["open"], high=r["high"], low=r["low"], close=r["close"], increasing_line_color=UP, decreasing_line_color=DOWN), row=1, col=1)
-    elif chart_type == "Line":
-        fig.add_trace(go.Scatter(x=r["lab"], y=r["close"], mode="lines", line=dict(color=LINE_COLOR, width=2)), row=1, col=1)
-    else:
-        fig.add_trace(go.Scatter(x=r["lab"], y=r["close"], mode="lines", fill="tozeroy", line=dict(color=LINE_COLOR, width=2)), row=1, col=1)
+    if chart_type == "Candlestick": fig.add_trace(go.Candlestick(x=r["lab"], open=r["open"], high=r["high"], low=r["low"], close=r["close"], increasing_line_color=UP, decreasing_line_color=DOWN), row=1, col=1)
+    elif chart_type == "Line": fig.add_trace(go.Scatter(x=r["lab"], y=r["close"], mode="lines", line=dict(color=LINE_COLOR, width=2)), row=1, col=1)
+    else: fig.add_trace(go.Scatter(x=r["lab"], y=r["close"], mode="lines", fill="tozeroy", line=dict(color=LINE_COLOR, width=2)), row=1, col=1)
 
     fig.add_trace(go.Bar(x=r["lab"], y=r["volume"], marker_color=np.where(r["close"] >= r["open"], UP_A, DOWN_A), name="Volume"), row=2, col=1)
     fig.add_trace(go.Scatter(x=r["lab"], y=r["rsi_14"], mode="lines", line=dict(color="#e040fb", width=2), name="RSI"), row=3, col=1)
@@ -225,26 +224,19 @@ if page == "📊 Chart Analysis":
     st.plotly_chart(fig, use_container_width=True, config={"scrollZoom": True, "displaylogo": False})
 
 elif page == "🔎 Market Screener":
+    # ... (Sehemu hii inabaki kama ilivyokuwa)
     st.markdown("<h2 style='color:white;'>Market Screener</h2>", unsafe_allow_html=True)
-    st.markdown("<p style='color:#8b949e;'>Chuja hisa kulingana na vigezo na BX AI Score.</p>", unsafe_allow_html=True)
-    
     latest_data = []
     for sym in df_master['symbol'].unique():
         sdf = df_master[df_master['symbol'] == sym].sort_values('date')
         if len(sdf) > 0:
             score, _, _ = analyze_stock(sdf)
-            
             sdf_with_vol = sdf[sdf['volume'] > 0]
             last_trade_date = sdf_with_vol['date'].max() if not sdf_with_vol.empty else sdf['date'].max()
-            
             last = sdf.iloc[-1]
-            latest_data.append({
-                'symbol': sym, 'close': last['close'], 'change': last['change'], 'pct': last['pct'],
-                'rsi_14': last['rsi_14'], 'volume': last['volume'], 'date': last_trade_date, 'ai_score': score
-            })
+            latest_data.append({'symbol': sym, 'close': last['close'], 'change': last['change'], 'pct': last['pct'], 'rsi_14': last['rsi_14'], 'volume': last['volume'], 'date': last_trade_date, 'ai_score': score})
     
     latest_df = pd.DataFrame(latest_data)
-    
     last_market_date = df_master['date'].max()
     latest_df['days_since_trade'] = (last_market_date - latest_df['date']).dt.days
 
@@ -252,56 +244,42 @@ elif page == "🔎 Market Screener":
     with col1: 
         min_score = st.slider("**Kiwango cha Chini cha BX AI Score:**", 0, 100, 50)
         rsi_filter = st.selectbox("**RSI Signal:**", ["Zote", "Oversold (<30)", "Overbought (>70)"])
-    with col2: 
-        min_turnover = st.number_input("**Kiasi cha Chini cha Fedha (TZS):**", min_value=0, value=5000000, step=1000000)
-    with col3: 
-        liquidity_filter = st.selectbox("**Uwezo wa Kufanya Biashara:**", ["Zote", "Zinazofanya biashara (Siku 5 zilizopita)"])
+    with col2: min_turnover = st.number_input("**Kiasi cha Chini cha Fedha (TZS):**", min_value=0, value=5000000, step=1000000)
+    with col3: liquidity_filter = st.selectbox("**Uwezo wa Kufanya Biashara:**", ["Zote", "Zinazofanya biashara (Siku 5 zilizopita)"])
 
     filtered = latest_df.copy()
     filtered = filtered[filtered['ai_score'] >= min_score]
-    
     if rsi_filter == "Oversold (<30)": filtered = filtered[filtered['rsi_14'] < 30]
     elif rsi_filter == "Overbought (>70)": filtered = filtered[filtered['rsi_14'] > 70]
-
     filtered['turnover'] = filtered['volume'] * filtered['close']
     filtered = filtered[filtered['turnover'] >= min_turnover]
-
     if liquidity_filter == "Zinazofanya biashara (Siku 5 zilizopita)": filtered = filtered[filtered['days_since_trade'] <= 5]
 
     display_df = filtered.reindex(columns=['symbol', 'ai_score', 'close', 'change', 'pct', 'rsi_14', 'turnover', 'days_since_trade']).fillna(0)
     display_df.columns = ['Hisa', 'BX AI Score', 'Bei ya Mwisho', 'Mabadiliko (TZS)', 'Mabadiliko (%)', 'RSI (14)', 'Fedha (TZS)', 'Siku Tangu Biashara']
     display_df = display_df.sort_values('BX AI Score', ascending=False)
 
-    st.dataframe(display_df.style.format({
-        'BX AI Score': '{:.0f}', 'Bei ya Mwisho': '{:,.2f}', 'Mabadiliko (TZS)': '{:,.2f}', 
-        'Mabadiliko (%)': '{:+.2f}%', 'RSI (14)': '{:.1f}', 'Fedha (TZS)': '{:,.0f}'
-    }).background_gradient(subset=['BX AI Score', 'Mabadiliko (%)'], cmap='RdYlGn'), use_container_width=True, height=600)
+    st.dataframe(display_df.style.format({'BX AI Score': '{:.0f}', 'Bei ya Mwisho': '{:,.2f}', 'Mabadiliko (TZS)': '{:,.2f}', 'Mabadiliko (%)': '{:+.2f}%', 'RSI (14)': '{:.1f}', 'Fedha (TZS)': '{:,.0f}'}).background_gradient(subset=['BX AI Score', 'Mabadiliko (%)'], cmap='RdYlGn'), use_container_width=True, height=600)
 
 elif page == "📰 Market Pulse":
     st.markdown("<h2 style='color:white;'>Market Pulse & Reports</h2>", unsafe_allow_html=True)
     st.markdown("<p style='color:#8b949e;'>Takwimu halisi za Uchumi (BOT) na Ripoti za Makampuni.</p>", unsafe_allow_html=True)
-
+    
     st.markdown("<h4 style='color:white; margin-bottom: 15px;'>🌍 Viashiria vya Uchumi (BOT)</h4>", unsafe_allow_html=True)
     
-    # Tunatengeneza Grid ya kadi 6
-    col_m1, col_m2, col_m3 = st.columns(3)
-    col_m4, col_m5, col_m6 = st.columns(3)
-    
-    keys = list(macro_data.keys())
-    vals = list(macro_data.values())
+    col_m1, col_m2 = st.columns(2)
+    col_m3, col_m4 = st.columns(2)
+    col_m5, col_m6 = st.columns(2)
+    cols = [col_m1, col_m2, col_m3, col_m4, col_m5, col_m6]
 
-    with col_m1:
-        st.markdown(f'<div class="macro-card"><div class="macro-title">{keys[0]}</div><div class="macro-value">{vals[0]["val"]}</div><div class="macro-desc">{vals[0]["desc"]}</div></div>', unsafe_allow_html=True)
-    with col_m2:
-        st.markdown(f'<div class="macro-card"><div class="macro-title">{keys[1]}</div><div class="macro-value">{vals[1]["val"]}</div><div class="macro-desc">{vals[1]["desc"]}</div></div>', unsafe_allow_html=True)
-    with col_m3:
-        st.markdown(f'<div class="macro-card"><div class="macro-title">{keys[2]}</div><div class="macro-value">{vals[2]["val"]}</div><div class="macro-desc">{vals[2]["desc"]}</div></div>', unsafe_allow_html=True)
-    with col_m4:
-        st.markdown(f'<div class="macro-card"><div class="macro-title">{keys[3]}</div><div class="macro-value">{vals[3]["val"]}</div><div class="macro-desc">{vals[3]["desc"]}</div></div>', unsafe_allow_html=True)
-    with col_m5:
-        st.markdown(f'<div class="macro-card"><div class="macro-title">{keys[4]}</div><div class="macro-value">{vals[4]["val"]}</div><div class="macro-desc">{vals[4]["desc"]}</div></div>', unsafe_allow_html=True)
-    with col_m6:
-        st.markdown(f'<div class="macro-card"><div class="macro-title">{keys[5]}</div><div class="macro-value">{vals[5]["val"]}</div><div class="macro-desc">{vals[5]["desc"]}</div></div>', unsafe_allow_html=True)
+    keys = list(MACRO_INFO.keys())
+    
+    for i, key in enumerate(keys):
+        with cols[i]:
+            info = MACRO_INFO[key]
+            st.markdown(f'<div class="macro-card"><div class="macro-title">{key}</div><div class="macro-value">{info["val"]}</div><div class="macro-desc">{info["desc"]}</div></div>', unsafe_allow_html=True)
+            with st.expander(f"❓ {key} inamaanisha nini kwa Hisa?"):
+                st.info(info["explain"])
 
     st.markdown("<hr style='border:1px solid #2a323d;'>", unsafe_allow_html=True)
     
