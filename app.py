@@ -189,7 +189,6 @@ if page == "📊 Chart Analysis":
     # =========================================================
     st.markdown("#### 🔮 Utabiri wa Miaka 1 hadi 10 (Monte Carlo Simulation)")
     
-    # HAPA NDIO ONYO (DISCLAIMER)
     st.warning("""
     **Tahadhari:** 
     Utabiri huu unatumia uwezekano (Probabilities) na mwenendo wa nyuma (Monte Carlo Simulation). 
@@ -201,43 +200,44 @@ if page == "📊 Chart Analysis":
     # Nimeweka slider ya Miaka 1 hadi 10
     forecast_years = st.slider("Chagua Muda wa Uwekezaji (Miaka):", min_value=1, max_value=10, value=5)
     
-    # Tunachukua data ya miaka 3 iliyopita kwa ajili ya kujifunza (ili tupate growth rate halisi)
+    # Tunachukua data ya miaka 3 iliyopita kwa ajili ya kujifunza
     three_years_ago = current_date - timedelta(days=1095)
     recent_data = stock_data[stock_data['date'] >= three_years_ago].copy()
     
     if len(recent_data) > 30:
-        # 1. Kuhesabu Daily Returns (Mabadiliko ya kila siku)
+        # 1. Kuhesabu Daily Returns
         recent_data['Daily_Return'] = recent_data['close'].pct_change()
         recent_data = recent_data.dropna()
         
-        # 2. Kupata Wastani (Mean) na Mkengeuko (Std Dev) wa mabadiliko
         mean_return = recent_data['Daily_Return'].mean()
         std_dev = recent_data['Daily_Return'].std()
         
-        # 3. Monte Carlo Simulation (Kufanya simulation mara 1000)
+        # 3. Monte Carlo Simulation (Iliyorekebishwa kuzuia Mabilioni)
         simulations = 1000
-        days_to_forecast = forecast_years * 252 # Siku za biashara kwa mwaka
+        days_to_forecast = forecast_years * 252
         final_values = []
         
+        # HAPA: Tunazuia mabadiliko yasizidi 0.3% kwa siku (~100% kwa mwaka) ili kuepuka utabiri wa ajabu
+        max_daily_return = 0.003
+        min_daily_return = -0.003
+        
         for _ in range(simulations):
-            # Tunajenga njia ya bei kwa kutumia Random Walk (Mwenendo wa nasibu)
             price_path = [current_price]
             for _ in range(days_to_forecast):
                 daily_ret = np.random.normal(mean_return, std_dev)
+                daily_ret = max(min(daily_ret, max_daily_return), min_daily_return)
                 price_path.append(price_path[-1] * (1 + daily_ret))
             
             final_price = price_path[-1]
-            # Thamani ya mwisho baada ya kuuza na kuongeza gawio (tukidhani gawio ni 5% kwa mwaka)
             div_earned_total = investment * ((1.05 ** forecast_years) - 1) * (1 - 0.05)
             final_value = (shares_bought * final_price * (1 - cost_rate)) + div_earned_total - total_investment
             final_values.append(final_value)
             
         final_values = np.array(final_values)
         
-        # 4. Kupata matokeo ya simulation
         expected_profit = np.mean(final_values)
-        worst_case = np.percentile(final_values, 10) # 10% ya scenarios mbaya zaidi
-        best_case = np.percentile(final_values, 90)  # 10% ya scenarios nzuri zaidi
+        worst_case = np.percentile(final_values, 10)
+        best_case = np.percentile(final_values, 90)
         
         st.write(f"Kulingana na simulation za soko ({simulations} scenarios kwa miaka {forecast_years}):")
         
