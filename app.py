@@ -415,4 +415,16 @@ elif page == "🌍 Habari za Soko":
     with col_m3: st.markdown(f'<div class="macro-card"><div class="macro-title">{keys[2]}</div><div class="macro-value">{vals[2]["val"]}</div><div style="font-size:10px; color:#8b949e;">{vals[2]["desc"]}</div></div>', unsafe_allow_html=True)
     with col_m4: st.markdown(f'<div class="macro-card"><div class="macro-title">{keys[3]}</div><div class="macro-value">{vals[3]["val"]}</div><div style="font-size:10px; color:#8b949e;">{vals[3]["desc"]}</div></div>', unsafe_allow_html=True)
     with col_m5: st.markdown(f'<div class="macro-card"><div class="macro-title">{keys[4]}</div><div class="macro-value">{vals[4]["val"]}</div><div style="font-size:10px; color:#8b949e;">{vals[4]["desc"]}</div></div>', unsafe_allow_html=True)
-    with col_m6:
+    with col_m6: st.markdown(f'<div class="macro-card"><div class="macro-title">{keys[5]}</div><div class="macro-value">{vals[5]["val"]}</div><div style="font-size:10px; color:#8b949e;">{vals[5]["desc"]}</div></div>', unsafe_allow_html=True)
+    
+    st.markdown("<br>", unsafe_allow_html=True)
+    st.markdown("<h4 style='color:white; margin-bottom: 10px;'>Ripoti za Makampuni</h4>", unsafe_allow_html=True)
+    st.info("Hapa utaweka viungo (Links) vya ripoti za mwaka (Annual Reports) au taarifa za makampuni.")
+    
+    reports = {
+        "CRDB Annual Report 2023": "https://www.crdbbank.co.tz/investor-relations",
+        "NMB Annual Report 2023": "https://www.nmbbank.co.tz/investor-relations",
+        "Vodacom Annual Report 2023": "https://www.vodacom.co.tz/about-us/investor-relations"
+    }
+    for name, link in reports.items():
+        st.markdown(f"🔗 [{name}]({link})")
