@@ -50,7 +50,7 @@ def init_supabase():
         key = st.secrets["SUPABASE_KEY"]
         return create_client(url, key)
     except Exception as e:
-        st.error(f"Kosa la kuunganisha na Supabase: {e}. Hakikisha umeweka Secrets kwenye Streamlit.")
+        st.error(f"Kosa la kuunganisha na Supabase: {e}.")
         return None
 
 supabase = init_supabase()
@@ -103,12 +103,12 @@ def load_data():
     except: return pd.DataFrame()
 
 MACRO_INFO = {
-    "CBR": {"val": "6.25%", "desc": "Riba ya Benki Kuu"},
-    "Inflation": {"val": "4.30%", "desc": "Mfumuko wa Bei"},
-    "GDP": {"val": "6.50%", "desc": "Ukuaji wa Uchumi"},
-    "TZS/USD": {"val": "2,628", "desc": "Kiwango cha Fedha"},
-    "Bond": {"val": "8.75%", "desc": "Riba ya Bond"},
-    "Interbank": {"val": "N/A", "desc": "Riba ya Benki"}
+    "CBR (Benki Kuu)": {"val": "6.25%", "desc": "Riba ya Benki Kuu"},
+    "Inflation (Mfumuko)": {"val": "4.30%", "desc": "Mfumuko wa Bei"},
+    "GDP Growth (Uchumi)": {"val": "6.50%", "desc": "Ukuaji wa Uchumi"},
+    "TZS / USD": {"val": "2,628", "desc": "Kiwango cha Fedha"},
+    "Riba ya Bond": {"val": "8.75%", "desc": "Riba ya Dhama za Serikali"},
+    "Interbank Rate": {"val": "N/A", "desc": "Riba ya Mikopo ya Benki"}
 }
 
 df_master = load_data()
@@ -138,13 +138,12 @@ def analyze_stock(sdf):
 
     return max(0, min(100, score)), reasons, warnings
 
-# ================= SIDEBAR (MENYU & USER) =================
+# ================= SIDEBAR =================
 with st.sidebar:
     st.markdown("<h2 style='text-align: center; color: #00f2fe;'>BXStockView</h2>", unsafe_allow_html=True)
     st.markdown("<p style='text-align: center; font-size: 12px; color: #8b949e;'>DSE Analytics Platform</p>", unsafe_allow_html=True)
     st.markdown("---")
     
-    # MFUMO WA MTUMIAJI (USER PHASE)
     user_email = st.text_input("📧 Ingia kwa Email Yako:", placeholder="mfano@gmail.com")
     if user_email:
         st.success(f"Umeingia kama: {user_email}")
@@ -156,12 +155,7 @@ with st.sidebar:
 
 # ================= KURASA =================
 if page == "📊 Uchambuzi wa Hisa":
-    st.markdown(f'''
-    <div class="main-header">
-        <h1>📊 Uchambuzi wa Hisa (Chart Analysis)</h1>
-        <p>Angalia mwenendo wa bei, viashiria (RSI), na pata ushauri wa AI.</p>
-    </div>
-    ''', unsafe_allow_html=True)
+    st.markdown('''<div class="main-header"><h1>📊 Uchambuzi wa Hisa (Chart Analysis)</h1><p>Angalia mwenendo wa bei, viashiria (RSI), na pata ushauri wa AI.</p></div>''', unsafe_allow_html=True)
 
     symbols = df_master['symbol'].unique().tolist()
     sym_options = [{"symbol": s, "name": COMPANY_DATA.get(s, {}).get("name", s)} for s in sorted(symbols)]
@@ -172,15 +166,7 @@ if page == "📊 Uchambuzi wa Hisa":
     domain = COMPANY_DATA.get(selected_sym, {}).get("domain", "")
     
     logo_html = get_logo_html(selected_sym, domain, size=60)
-    st.markdown(f'''
-    <div style="background-color: {CARD_BG}; padding: 20px; border-radius: 10px; display: flex; align-items: center; margin-bottom: 20px; box-shadow: 0 4px 6px rgba(0,0,0,0.2);">
-        {logo_html}
-        <div>
-            <h2 style="margin: 0; color: white;">{selected_sym}</h2>
-            <span style="color: #8b949e; font-size: 16px;">{selected_name}</span>
-        </div>
-    </div>
-    ''', unsafe_allow_html=True)
+    st.markdown(f'''<div style="background-color: {CARD_BG}; padding: 20px; border-radius: 10px; display: flex; align-items: center; margin-bottom: 20px; box-shadow: 0 4px 6px rgba(0,0,0,0.2);">{logo_html}<div><h2 style="margin: 0; color: white;">{selected_sym}</h2><span style="color: #8b949e; font-size: 16px;">{selected_name}</span></div></div>''', unsafe_allow_html=True)
 
     stock_data = df_master[df_master['symbol'] == selected_sym].sort_values('date')
     ai_score, reasons, warnings = analyze_stock(stock_data)
@@ -188,12 +174,7 @@ if page == "📊 Uchambuzi wa Hisa":
     
     reasons_html = "".join([f'<div style="margin-bottom: 4px;">• {r}</div>' for r in reasons])
     warnings_html = "".join([f'<div style="margin-bottom: 4px; color:#ff9800;">• {w}</div>' for w in warnings])
-    st.markdown(f'''
-    <div style="background-color: {CARD_BG}; padding: 15px; border-radius: 8px; border-left: 5px solid {score_color}; margin-bottom: 20px; box-shadow: 0 4px 6px rgba(0,0,0,0.2);">
-        <h4 style="margin: 0; color: white;">BX AI Score: <span style="color: {score_color};">{ai_score}/100</span></h4>
-        <div style="color: #e1e6ed; font-size: 14px; margin-top: 10px;">{reasons_html}{warnings_html}</div>
-    </div>
-    ''', unsafe_allow_html=True)
+    st.markdown(f'''<div style="background-color: {CARD_BG}; padding: 15px; border-radius: 8px; border-left: 5px solid {score_color}; margin-bottom: 20px; box-shadow: 0 4px 6px rgba(0,0,0,0.2);"><h4 style="margin: 0; color: white;">BX AI Score: <span style="color: {score_color};">{ai_score}/100</span></h4><div style="color: #e1e6ed; font-size: 14px; margin-top: 10px;">{reasons_html}{warnings_html}</div></div>''', unsafe_allow_html=True)
 
     tab1, tab2 = st.tabs(["📈 Chart ya Bei", "💰 Kikokotoo & Utabiri"])
 
@@ -310,12 +291,7 @@ if page == "📊 Uchambuzi wa Hisa":
             with col_r3: st.metric(label="Hali Nzuri (10%)", value=f"TZS {best_case:,.2f}")
 
 elif page == "💼 Portfolio Yangu":
-    st.markdown(f'''
-    <div class="main-header">
-        <h1>💼 Portfolio Yangu (My Portfolio)</h1>
-        <p>Fuatilia hisa ulizonunua na uone faida/hasara yako.</p>
-    </div>
-    ''', unsafe_allow_html=True)
+    st.markdown('''<div class="main-header"><h1>💼 Portfolio Yangu (My Portfolio)</h1><p>Fuatilia hisa ulizonunua na uone faida/hasara yako.</p></div>''', unsafe_allow_html=True)
 
     if not user_email:
         st.warning("Tafadhali weka Email yako kwenye Sidebar (kushoto) ili kuona Portfolio yako.")
@@ -386,12 +362,7 @@ elif page == "💼 Portfolio Yangu":
             st.error(f"Kosa la kusoma Portfolio: {e}")
 
 elif page == "🔎 Kichujio (Screener)":
-    st.markdown(f'''
-    <div class="main-header">
-        <h1>🔎 Kichujio cha Hisa (Screener)</h1>
-        <p>Chuja hisa zote za DSE kulingana na AI Score, RSI, na Fedha.</p>
-    </div>
-    ''', unsafe_allow_html=True)
+    st.markdown('''<div class="main-header"><h1>🔎 Kichujio cha Hisa (Screener)</h1><p>Chuja hisa zote za DSE kulingana na AI Score, RSI, na Fedha.</p></div>''', unsafe_allow_html=True)
 
     latest_data = []
     for sym in df_master['symbol'].unique():
@@ -429,12 +400,7 @@ elif page == "🔎 Kichujio (Screener)":
     st.dataframe(display_df.style.format({'AI Score': '{:.0f}', 'Bei': '{:,.2f}', 'Mabadiliko (TZS)': '{:,.2f}', 'Mabadiliko (%)': '{:+.2f}%', 'RSI': '{:.1f}', 'Fedha (TZS)': '{:,.0f}'}).background_gradient(subset=['AI Score', 'Mabadiliko (%)'], cmap='RdYlGn'), use_container_width=True, height=600)
 
 elif page == "🌍 Habari za Soko":
-    st.markdown(f'''
-    <div class="main-header">
-        <h1>🌍 Habari za Soko (Market Pulse)</h1>
-        <p>Takwimu halisi za Uchumi (BOT) na Ripoti za Makampuni.</p>
-    </div>
-    ''', unsafe_allow_html=True)
+    st.markdown('''<div class="main-header"><h1>🌍 Habari za Soko (Market Pulse)</h1><p>Takwimu halisi za Uchumi (BOT) na Ripoti za Makampuni.</p></div>''', unsafe_allow_html=True)
 
     st.markdown("<h4 style='color:white; margin-bottom: 15px;'>Viashiria vya Uchumi (BOT)</h4>", unsafe_allow_html=True)
     
@@ -447,4 +413,6 @@ elif page == "🌍 Habari za Soko":
     with col_m1: st.markdown(f'<div class="macro-card"><div class="macro-title">{keys[0]}</div><div class="macro-value">{vals[0]["val"]}</div><div style="font-size:10px; color:#8b949e;">{vals[0]["desc"]}</div></div>', unsafe_allow_html=True)
     with col_m2: st.markdown(f'<div class="macro-card"><div class="macro-title">{keys[1]}</div><div class="macro-value">{vals[1]["val"]}</div><div style="font-size:10px; color:#8b949e;">{vals[1]["desc"]}</div></div>', unsafe_allow_html=True)
     with col_m3: st.markdown(f'<div class="macro-card"><div class="macro-title">{keys[2]}</div><div class="macro-value">{vals[2]["val"]}</div><div style="font-size:10px; color:#8b949e;">{vals[2]["desc"]}</div></div>', unsafe_allow_html=True)
-    with col_m4: st.markdown(f'<div class="macro-card"><div class="macro-title">{keys[3]}</div><div class="macro-value">{vals[3]["val"]}</div><div
+    with col_m4: st.markdown(f'<div class="macro-card"><div class="macro-title">{keys[3]}</div><div class="macro-value">{vals[3]["val"]}</div><div style="font-size:10px; color:#8b949e;">{vals[3]["desc"]}</div></div>', unsafe_allow_html=True)
+    with col_m5: st.markdown(f'<div class="macro-card"><div class="macro-title">{keys[4]}</div><div class="macro-value">{vals[4]["val"]}</div><div style="font-size:10px; color:#8b949e;">{vals[4]["desc"]}</div></div>', unsafe_allow_html=True)
+    with col_m6:
