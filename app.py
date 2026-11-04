@@ -8,7 +8,6 @@ from datetime import timedelta
 from supabase import create_client, Client
 
 # ================= MIPANGILIO YA UI =================
-# HAPA NDIO TUNAWEKA LOGO KWENYE TAB YA BROWSER
 st.set_page_config(
     page_title="BXStockView", 
     page_icon="bxlogo.svg", 
@@ -146,12 +145,13 @@ def analyze_stock(sdf):
 
 # ================= SIDEBAR =================
 with st.sidebar:
-    # HAPA NDIO TUNAWEKA LOGO KWENYE SIDEBAR
+    # HAPA NDIO TUNAWEKA LOGO NA JINA LA APP
     col1, col2, col3 = st.columns([1, 2, 1])
     with col2:
-        # Badilisha "bxlogo.svg" kama jina la faili lako ni tofauti
         st.image("bxlogo.svg", use_container_width=True) 
     
+    # JINA LA APP CHINI YA LOGO
+    st.markdown("<h2 style='text-align: center; color: #00f2fe; font-weight: 900; margin-top: 10px; margin-bottom: 0px;'>BXStockView</h2>", unsafe_allow_html=True)
     st.markdown("<p style='text-align: center; font-size: 12px; color: #8b949e; margin-top: 5px;'>DSE Analytics Platform</p>", unsafe_allow_html=True)
     st.markdown("---")
     
