@@ -8,7 +8,13 @@ from datetime import timedelta
 from supabase import create_client, Client
 
 # ================= MIPANGILIO YA UI =================
-st.set_page_config(page_title="BXStockView", layout="wide", initial_sidebar_state="expanded")
+# HAPA NDIO TUNAWEKA LOGO KWENYE TAB YA BROWSER
+st.set_page_config(
+    page_title="BXStockView", 
+    page_icon="bxlogo.svg", 
+    layout="wide", 
+    initial_sidebar_state="expanded"
+)
 
 UP, DOWN = "#00e676", "#ff5252"
 UP_A, DOWN_A = "rgba(0, 230, 118, 0.5)", "rgba(255, 82, 82, 0.5)"
@@ -140,8 +146,13 @@ def analyze_stock(sdf):
 
 # ================= SIDEBAR =================
 with st.sidebar:
-    st.markdown("<h2 style='text-align: center; color: #00f2fe;'>BXStockView</h2>", unsafe_allow_html=True)
-    st.markdown("<p style='text-align: center; font-size: 12px; color: #8b949e;'>DSE Analytics Platform</p>", unsafe_allow_html=True)
+    # HAPA NDIO TUNAWEKA LOGO KWENYE SIDEBAR
+    col1, col2, col3 = st.columns([1, 2, 1])
+    with col2:
+        # Badilisha "bxlogo.svg" kama jina la faili lako ni tofauti
+        st.image("bxlogo.svg", use_container_width=True) 
+    
+    st.markdown("<p style='text-align: center; font-size: 12px; color: #8b949e; margin-top: 5px;'>DSE Analytics Platform</p>", unsafe_allow_html=True)
     st.markdown("---")
     
     user_email = st.text_input("📧 Ingia kwa Email Yako:", placeholder="mfano@gmail.com")
