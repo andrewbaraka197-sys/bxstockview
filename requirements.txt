@@ -6,4 +6,5 @@ requests
 matplotlib
 scikit-learn
 supabase
+beautifulsoup4
 
