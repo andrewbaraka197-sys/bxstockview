@@ -1,554 +1,440 @@
-"""
-DSE data - faili moja.
-  python dse_all.py daily      -> bei za leo (DSE) + ripoti za TSL
-  python dse_all.py backfill   -> data za zamani (Wayback + archive.org yote) + ripoti za TSL
-Matokeo: data/dse_daily.csv  na  data/tsl_daily.csv
-Install: pip install requests beautifulsoup4 pdfplumber
-"""
-import csv
-import os
-import re
-import sys
-import time
-from collections import Counter
-from datetime import datetime
-from io import BytesIO
+import streamlit as st
+import pandas as pd
+import numpy as np
+import plotly.graph_objects as go
+from plotly.subplots import make_subplots
+import json
+from datetime import timedelta
+from supabase import create_client, Client
 
-import requests
-from bs4 import BeautifulSoup
+# ================= MIPANGILIO YA UI =================
+st.set_page_config(
+    page_title="BXStockView", 
+    page_icon="bxlogo.svg", 
+    layout="wide", 
+    initial_sidebar_state="expanded"
+)
 
-# =====================================================================
-# HAPA NDIO PAMErekebishwa: Tumeongeza Cookie na Browser details kamili
-# ili kuvuka kizuizi cha "Cookie Consent" cha tovuti ya DSE
-# =====================================================================
-HEADERS = {
-    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8",
-    "Accept-Language": "en-US,en;q=0.9",
-    "Cookie": "cookieconsent_status=allow; cookies_accepted=true; _ga=GA1.2.123456789.123456789"
+UP, DOWN = "#00e676", "#ff5252"
+UP_A, DOWN_A = "rgba(0, 230, 118, 0.5)", "rgba(255, 82, 82, 0.5)"
+BG = "#0e1117"
+CARD_BG = "#1e222d"
+TXT = "#fafafa"
+ACCENT = "#00f2fe"
+
+st.markdown(f'''
+    <style>
+    .stApp {{ background-color: {BG}; color: {TXT}; }}
+    .css-1d391kg {{ background-color: {CARD_BG}; }}
+    .main-header {{
+        background: linear-gradient(90deg, #1e222d 0%, #2962ff 100%);
+        padding: 20px; border-radius: 10px; margin-bottom: 20px; box-shadow: 0 4px 6px rgba(0,0,0,0.3);
+    }}
+    .main-header h1 {{ color: white; margin: 0; font-size: 28px; font-weight: 900; }}
+    .main-header p {{ color: #a0aec0; margin: 0; font-size: 14px; }}
+    .macro-card {{
+        background-color: {CARD_BG}; border: 1px solid #2a323d; border-left: 5px solid {ACCENT};
+        border-radius: 8px; padding: 15px; text-align: center; box-shadow: 0 4px 6px rgba(0,0,0,0.3);
+    }}
+    .macro-title {{ font-size: 12px; color: #8b949e; margin-bottom: 5px; font-weight: bold; text-transform: uppercase; }}
+    .macro-value {{ font-size: 22px; color: white; font-weight: bold; font-family: 'Roboto Mono', monospace; }}
+    .stTabs [data-baseweb="tab-list"] {{ gap: 24px; }}
+    .stTabs [data-baseweb="tab"] {{
+        height: 50px; white-space: pre-wrap; background-color: {CARD_BG};
+        border-radius: 5px 5px 0px 0px; padding-top: 10px; padding-bottom: 10px; color: {TXT};
+    }}
+    .stTabs [aria-selected="true"] {{ background-color: {ACCENT}; color: black; font-weight: bold; }}
+    </style>
+''', unsafe_allow_html=True)
+
+# ================= SUPABASE CONNECTION =================
+@st.cache_resource
+def init_supabase():
+    try:
+        url = st.secrets["SUPABASE_URL"]
+        key = st.secrets["SUPABASE_KEY"]
+        return create_client(url, key)
+    except Exception as e:
+        st.error(f"Kosa la kuunganisha na Supabase: {e}. Hakikisha umeweka Secrets kwenye Streamlit.")
+        return None
+
+supabase = init_supabase()
+
+# ================= LOAD DATA =================
+COMPANY_DATA = {
+    "CRDB": {"name": "CRDB Bank Plc", "domain": "crdbbank.co.tz"},
+    "NMB": {"name": "NMB Bank Plc", "domain": "nmbbank.co.tz"},
+    "VODA": {"name": "Vodacom Tanzania", "domain": "vodacom.co.tz"},
+    "TBL": {"name": "Tanzania Breweries", "domain": "tbl.co.tz"},
+    "KCB": {"name": "KCB Bank (Kenya)", "domain": "kcbgroup.com"},
+    "TPCC": {"name": "Tanzania Portland Cement (Twiga)", "domain": "twigacement.com"},
+    "TOL": {"name": "TOL Gases Ltd", "domain": "tol.co.tz"},
+    "TCC": {"name": "Tanzania Cigarette Co", "domain": "tcc.co.tz"},
+    "DCB": {"name": "DCB Commercial Bank", "domain": "dcbbank.co.tz"},
+    "SWIS": {"name": "Swissport Tanzania", "domain": "swissport.com"},
+    "NICO": {"name": "National Investment Co", "domain": "nico.co.tz"},
+    "TPLC": {"name": "Tanga Cement Plc", "domain": "tangacement.co.tz"},
 }
 
-DSE_URL = "https://dse.co.tz/"
-DSE_FILE = "data/dse_daily.csv"
-TSL_FILE = "data/tsl_daily.csv"
-WAYBACK_DONE = "data/wayback_done.txt"
-CDX = "https://web.archive.org/cdx/search/cdx"
-WAYBACK_TARGETS = ["dse.co.tz/", "www.dse.co.tz/", "dse.co.tz/?action=index"]
-FROM_YEAR, TO_YEAR = "2015", "2026"
-DEADLINE = time.time() + 320 * 60       # simama kabla GitHub haijakata kazi (saa 6)
+SYMBOL_ALIASES = {"TCCL": "TPCC", "TWIGA": "TPCC", "TCPLC": "TPLC", "SWISS": "SWIS"}
+VALID_DSE_SYMBOLS = ["DSE", "CRDB", "DCB", "EABL", "JHL", "KA", "KCB", "MBP", "NICO", "NMB", "NMG", "PAL", "SWIS", "TBL", "TPLC", "TOL", "TTP", "SWALA", "USL", "MKCB", "MCB", "YETU", "MUCOBA", "VODA", "AFRIPRISE", "JATU", "TCC", "TPCC", "VERTEX-ETF", "ITRUST-ETF", "IEACLC-ETF", "ZAN-ETF", "ZAN TANZANIA ETF"]
 
-COLS = ["open", "prev_close", "close", "high", "low", "turnover", "deals", "bid", "offer", "volume", "mcap"]
-DSE_FIELDS = ["date", "symbol"] + COLS
-FIELD_MAP = {"symbol": "symbol", "open": "open", "prevclose": "prev_close", "close": "close",
-             "high": "high", "low": "low", "turnover": "turnover", "deals": "deals",
-             "outstandingbid": "bid", "outstandingoffer": "offer", "volume": "volume"}
-TSL_FIELDS = ["date", "symbol", "open", "close", "gain_pct", "div_yield_pct", "ytd_pct", "turnover", "prev_turnover"]
-TSL_LIST = "https://www.tanzaniasecurities.co.tz/reports/daily?catId=1&page={}"
-SYM = r"([A-Z][A-Z0-9\-]{1,12})\*{0,2}"
-PRICE_RE = re.compile(rf"^{SYM}\s+([\d,]+)\s+([\d,]+)\s+(-?[\d.]+)%\s+(-?[\d.]+)%\s+(-?[\d.]+)%$")
-TURN_RE = re.compile(rf"^{SYM}\s+([\d,]+)\s+([\d,]+)(?:\s+-?[\d.]+%)?$")
-
-
-# ---------------- zana za pamoja ----------------
-def num(s):
-    s = re.sub(r"[^\d.\-]", "", (s or "").replace(",", ""))
-    try:
-        return float(s)
-    except ValueError:
-        return None
-
-
-def http_get(url, **kw):
-    for i in range(5):
-        try:
-            # Hapa tunatumia HEADERS zilizoboreshwa
-            r = requests.get(url, headers=HEADERS, timeout=90, **kw)
-            if r.status_code in (429, 500, 502, 503, 504):
-                time.sleep(10 * (i + 1))
-                continue
-            r.raise_for_status()
-            return r
-        except requests.RequestException:
-            time.sleep(5 * (i + 1))
-    return None
-
-
-def load_csv(path, key_fields):
-    data = {}
-    if os.path.exists(path):
-        with open(path, newline="", encoding="utf-8") as f:
-            for r in csv.DictReader(f):
-                data[tuple(r[k] for k in key_fields)] = r
-    return data
-
-
-def save_csv(path, data, fields):
-    os.makedirs(os.path.dirname(path), exist_ok=True)
-    with open(path, "w", newline="", encoding="utf-8") as f:
-        w = csv.DictWriter(f, fieldnames=fields)
-        w.writeheader()
-        for k in sorted(data):
-            w.writerow({c: data[k].get(c, "") for c in fields})
-
-
-# ---------------- DSE: ukurasa wa mbele ----------------
-def parse_date(html):
-    text = BeautifulSoup(html, "html.parser").get_text(" ", strip=True)
-    m = re.search(r"Market Summary\s*:?\s*([A-Za-z]+)\s+(\d{1,2}),\s*(\d{4})", text)
-    if not m:
-        return None
-    try:
-        return datetime.strptime(" ".join(m.groups()), "%B %d %Y").strftime("%Y-%m-%d")
-    except ValueError:
-        return None
-
-
-def parse_table(html):
-    out = []
-    for tb in BeautifulSoup(html, "html.parser").find_all("table"):
-        rows = tb.find_all("tr")
-        if not rows:
-            continue
-        head = [re.sub(r"[^a-z]", "", c.get_text().lower()) for c in rows[0].find_all(["th", "td"])]
-        if "symbol" not in head or "close" not in head:
-            continue
-        idx = {}
-        for i, h in enumerate(head):
-            if h in FIELD_MAP:
-                idx[FIELD_MAP[h]] = i
-            elif h.startswith("mcap"):
-                idx["mcap"] = i
-        for tr in rows[1:]:
-            cells = [c.get_text(" ", strip=True) for c in tr.find_all(["td", "th"])]
-            if len(cells) <= idx["symbol"] or not cells[idx["symbol"]]:
-                continue
-            d = {"symbol": cells[idx["symbol"]].upper()}
-            for k in COLS:
-                d[k] = num(cells[idx[k]]) if k in idx and idx[k] < len(cells) else None
-            out.append(d)
-    return out
-
-
-def merge_dse(data, date, rows):
-    """Kama (tarehe, hisa) ipo, ibaki ile yenye turnover kubwa (siku kamili)."""
-    added = 0
-    for r in rows:
-        key = (date, r["symbol"])
-        old = data.get(key)
-        new_t = r.get("turnover") or 0
-        old_t = float(old.get("turnover") or 0) if old else -1
-        if new_t >= old_t:
-            data[key] = {"date": date, **{k: ("" if r.get(k) is None else r.get(k)) for k in ["symbol"] + COLS}}
-            added += 1 if old is None else 0
-    return added
-
-
-def run_live():
-    print("== DSE: bei za leo ==")
-    r = http_get(DSE_URL)
-    if not r:
-        print("  ! ukurasa wa DSE haukufunguka")
-        return
-    date, rows = parse_date(r.text), parse_table(r.text)
-    if not date or not rows:
-        print(f"  ! imeshindwa kusoma (tarehe={date}, hisa={len(rows)})")
-        return
-    data = load_csv(DSE_FILE, ["date", "symbol"])
-    added = merge_dse(data, date, rows)
-    save_csv(DSE_FILE, data, DSE_FIELDS)
-    print(f"  {date}: hisa {len(rows)}, mpya {added}, jumla ya safu {len(data)}")
-
-
-# ---------------- Wayback Machine (historia) ----------------
-def list_snapshots():
-    days = {}
-    for t in WAYBACK_TARGETS:
-        r = http_get(CDX, params={"url": t, "from": FROM_YEAR, "to": TO_YEAR, "output": "json",
-                                  "fl": "timestamp,original", "filter": "statuscode:200",
-                                  "collapse": "timestamp:8"})
-        if not r or not r.text.strip():
-            print(f"  ! CDX haikujibu kwa {t}")
-            continue
-        rows = r.json()[1:]
-        print(f"  {t}: picha {len(rows)}")
-        for ts, orig in rows:
-            days.setdefault(ts[:8], (ts, orig))
-    return sorted(days.items())
-
-
-def run_wayback():
-    print("== Wayback Machine: historia ya DSE ==")
-    os.makedirs("data", exist_ok=True)
-    done = set(open(WAYBACK_DONE).read().split()) if os.path.exists(WAYBACK_DONE) else set()
-    snaps = list_snapshots()
-    todo = [(d, v) for d, v in snaps if d not in done]
-    print(f"  siku zenye picha: {len(snaps)} | zilizobaki: {len(todo)}")
-    data = load_csv(DSE_FILE, ["date", "symbol"])
-    ok = fail = 0
-    for i, (day, (ts, orig)) in enumerate(todo, 1):
-        if time.time() > DEADLINE:
-            print("  muda umeisha; endesha tena kuendelea")
-            break
-        r = http_get(f"https://web.archive.org/web/{ts}id_/{orig}")
-        date, rows = (parse_date(r.text), parse_table(r.text)) if r else (None, [])
-        if date and rows:
-            merge_dse(data, date, rows)
-            ok += 1
-        else:
-            fail += 1
-        done.add(day)
-        if i % 50 == 0:
-            save_csv(DSE_FILE, data, DSE_FIELDS)
-            open(WAYBACK_DONE, "w").write("\n".join(sorted(done)))
-            print(f"  [{i}/{len(todo)}] sawa {ok} | haikusomeka {fail} | safu {len(data)}")
-        time.sleep(1.0)
-    save_csv(DSE_FILE, data, DSE_FIELDS)
-    open(WAYBACK_DONE, "w").write("\n".join(sorted(done)))
-    dates = sorted({d for d, _ in data})
-    if dates:
-        per_year = Counter(d[:4] for d in dates)
-        print(f"  tarehe: {dates[0]} -> {dates[-1]} | siku {len(dates)} | safu {len(data)}")
-        print("  siku kwa mwaka:", dict(sorted(per_year.items())))
+def get_logo_html(sym, domain, size=50):
+    if domain:
+        logo_url = f"https://img.logo.dev/{domain}?token=pk_2Z7XecBchSB7U8OxYamQIBoDH4F_7huod8eqNPzz6W5hgu1Uz"
+        return f'<img src="{logo_url}" style="width:{size}px; height:{size}px; object-fit:contain; margin-right:15px; border-radius:8px;" onerror="this.style.display=\'none\'; this.nextElementSibling.style.display=\'flex\';"> <div style="display:none; width:{size}px; height:{size}px; background-color:#2962ff; color:white; align-items:center; justify-content:center; font-size:{int(size/2)}px; font-weight:bold; border-radius:8px; margin-right:15px;">{sym[:3]}</div>'
     else:
-        print("  hakuna data iliyosomeka (muundo wa zamani ni tofauti)")
+        return f'<div style="width:{size}px; height:{size}px; background-color:#2962ff; color:white; display:flex; align-items:center; justify-content:center; font-size:{int(size/2)}px; font-weight:bold; border-radius:8px; margin-right:15px;">{sym[:3]}</div>'
 
-
-# ---------------- TSL: ripoti za PDF ----------------
-def tsl_title_date(title):
-    m = re.search(r"([A-Za-z]+)\s+(\d{1,2}),\s*(\d{4})", title)
-    if not m:
-        return None
+def load_data():
     try:
-        return datetime.strptime(" ".join(m.groups()), "%B %d %Y").strftime("%Y-%m-%d")
-    except ValueError:
-        return None
+        with open("data.json", "r") as f: data = json.load(f)
+        all_rows = []
+        for stock in data:
+            raw_sym = stock['symbol'].strip().upper()
+            sym = SYMBOL_ALIASES.get(raw_sym, raw_sym)
+            if sym not in VALID_DSE_SYMBOLS: continue
+            chart_data = stock.get('chart_data', [])
+            for day in chart_data:
+                all_rows.append({
+                    'symbol': sym, 'date': pd.to_datetime(day['time']), 'open': day.get('open', 0),
+                    'high': day.get('high', 0), 'low': day.get('low', 0), 'close': day.get('close', 0),
+                    'volume': day.get('volume', 0), 'rsi_14': day.get('rsi_14', 50.0),
+                    'change': stock.get('change', 0.0), 'pct': stock.get('pct', 0.0)
+                })
+        df = pd.DataFrame(all_rows)
+        if df.empty: return df
+        return df.sort_values(['symbol', 'date'])
+    except: return pd.DataFrame()
 
+MACRO_INFO = {
+    "CBR (Benki Kuu)": {"val": "6.25%", "desc": "Riba ya Benki Kuu"},
+    "Inflation (Mfumuko)": {"val": "4.30%", "desc": "Mfumuko wa Bei"},
+    "GDP Growth (Uchumi)": {"val": "6.50%", "desc": "Ukuaji wa Uchumi"},
+    "TZS / USD": {"val": "2,628", "desc": "Kiwango cha Fedha"},
+    "Riba ya Bond": {"val": "8.75%", "desc": "Riba ya Dhama za Serikali"},
+    "Interbank Rate": {"val": "N/A", "desc": "Riba ya Mikopo ya Benki"}
+}
 
-def tsl_listing(html):
-    out = []
-    for a in BeautifulSoup(html, "html.parser").find_all("a", href=True):
-        if ".pdf" not in a["href"].lower():
-            continue
-        h = a.find_previous(["h1", "h2", "h3", "h4", "h5"])
-        out.append((tsl_title_date(h.get_text(" ", strip=True)) if h else None, a["href"]))
-    return out
+df_master = load_data()
 
+if df_master.empty:
+    st.error("Data haipo au ina hitilafu. Tafadhali hakikisha 'data.json' ipo GitHub.")
+    st.stop()
 
-def tsl_parse_text(text):
-    rows = {}
-    for line in text.splitlines():
-        line = " ".join(line.split())
-        m = PRICE_RE.match(line)
-        if m:
-            rows.setdefault(m.group(1), {}).update(
-                open=num(m.group(2)), close=num(m.group(3)), gain_pct=num(m.group(4)),
-                div_yield_pct=num(m.group(5)), ytd_pct=num(m.group(6)))
-            continue
-        m = TURN_RE.match(line)
-        if m:
-            rows.setdefault(m.group(1), {}).update(prev_turnover=num(m.group(2)), turnover=num(m.group(3)))
-    return {s: d for s, d in rows.items() if "close" in d}
+def analyze_stock(sdf):
+    if len(sdf) < 5: return 0, ["Hakuna data ya kutosha."], []
+    last = sdf.iloc[-1]
+    rsi, close, vol_today = last['rsi_14'], last['close'], last['volume']
+    vol_avg = sdf['volume'].tail(20).mean()
+    score = 50; reasons, warnings = [], []
 
+    if rsi < 30: score += 20; reasons.append("✅ RSI iko chini ya 30 (Oversold).")
+    elif rsi > 70: score -= 20; warnings.append("⚠️ RSI iko juu ya 70 (Overbought).")
+    else: reasons.append("✅ RSI iko katika eneo la kati (Neutral).")
 
-def run_tsl():
-    print("== TSL: ripoti za PDF ==")
-    import pdfplumber
-    data = load_csv(TSL_FILE, ["date", "symbol"])
-    have = {d for d, _ in data}
-    reports, seen = [], set()
-    for page in range(1, 41):
-        r = http_get(TSL_LIST.format(page))
-        if not r:
-            break
-        items = [x for x in tsl_listing(r.text) if x[1] not in seen]
-        if not items:
-            break
-        for date, url in items:
-            seen.add(url)
-            reports.append((date, url))
-        time.sleep(1.0)
-    new = [(d, u) for d, u in reports if d not in have]
-    print(f"  ripoti: {len(reports)} | mpya: {len(new)}")
-    for i, (date, url) in enumerate(new, 1):
+    if vol_today > (vol_avg * 1.5): score += 15; reasons.append("✅ Volume imeongezeka sana leo.")
+    elif vol_today == 0: score -= 30; warnings.append("🚨 Hakuna biashara leo (Volume = 0).")
+
+    if len(sdf) > 50:
+        sma50 = sdf['close'].tail(50).mean()
+        if close > sma50: score += 15; reasons.append("✅ Bei iko juu ya wastani wa siku 50.")
+        else: score -= 15; warnings.append("⚠️ Bei iko chini ya wastani wa siku 50.")
+
+    return max(0, min(100, score)), reasons, warnings
+
+# ================= SIDEBAR =================
+with st.sidebar:
+    # LOGO NA JINA
+    col1, col2, col3 = st.columns([1, 2, 1])
+    with col2:
+        st.image("bxlogo.svg", use_container_width=True) 
+    
+    st.markdown("<h2 style='text-align: center; color: #00f2fe; font-weight: 900; margin-top: 10px; margin-bottom: 0px;'>BXStockView</h2>", unsafe_allow_html=True)
+    st.markdown("<p style='text-align: center; font-size: 12px; color: #8b949e; margin-top: 5px;'>DSE Analytics Platform</p>", unsafe_allow_html=True)
+    st.markdown("---")
+    
+    user_email = st.text_input("📧 Ingia kwa Email Yako:", placeholder="mfano@gmail.com")
+    if user_email:
+        st.success(f"Umeingia kama: {user_email}")
+    else:
+        st.warning("Tafadhali ingia kwa email ili kuhifadhi Portfolio yako.")
+    
+    st.markdown("---")
+    page = st.radio("**Menyu:**", ["📊 Uchambuzi wa Hisa", "💼 Portfolio Yangu", "🔎 Kichujio (Screener)", "🌍 Habari za Soko"])
+
+# ================= KURASA =================
+if page == "📊 Uchambuzi wa Hisa":
+    st.markdown('''<div class="main-header"><h1>📊 Uchambuzi wa Hisa (Chart Analysis)</h1><p>Angalia mwenendo wa bei, viashiria (RSI), na pata ushauri wa AI.</p></div>''', unsafe_allow_html=True)
+
+    symbols = df_master['symbol'].unique().tolist()
+    sym_options = [{"symbol": s, "name": COMPANY_DATA.get(s, {}).get("name", s)} for s in sorted(symbols)]
+    selected_idx = st.selectbox("Chagua Hisa Unayotaka Kuichambua:", range(len(sym_options)), format_func=lambda x: f"{sym_options[x]['symbol']} - {sym_options[x]['name']}")
+    
+    selected_sym = sym_options[selected_idx]['symbol']
+    selected_name = sym_options[selected_idx]['name']
+    domain = COMPANY_DATA.get(selected_sym, {}).get("domain", "")
+    
+    logo_html = get_logo_html(selected_sym, domain, size=60)
+    st.markdown(f'''<div style="background-color: {CARD_BG}; padding: 20px; border-radius: 10px; display: flex; align-items: center; margin-bottom: 20px; box-shadow: 0 4px 6px rgba(0,0,0,0.2);">{logo_html}<div><h2 style="margin: 0; color: white;">{selected_sym}</h2><span style="color: #8b949e; font-size: 16px;">{selected_name}</span></div></div>''', unsafe_allow_html=True)
+
+    stock_data = df_master[df_master['symbol'] == selected_sym].sort_values('date')
+    ai_score, reasons, warnings = analyze_stock(stock_data)
+    score_color = UP if ai_score >= 70 else "#ffb700" if ai_score >= 40 else DOWN
+    
+    reasons_html = "".join([f'<div style="margin-bottom: 4px;">• {r}</div>' for r in reasons])
+    warnings_html = "".join([f'<div style="margin-bottom: 4px; color:#ff9800;">• {w}</div>' for w in warnings])
+    st.markdown(f'''<div style="background-color: {CARD_BG}; padding: 15px; border-radius: 8px; border-left: 5px solid {score_color}; margin-bottom: 20px; box-shadow: 0 4px 6px rgba(0,0,0,0.2);"><h4 style="margin: 0; color: white;">BX AI Score: <span style="color: {score_color};">{ai_score}/100</span></h4><div style="color: #e1e6ed; font-size: 14px; margin-top: 10px;">{reasons_html}{warnings_html}</div></div>''', unsafe_allow_html=True)
+
+    tab1, tab2 = st.tabs(["📈 Chart ya Bei", "💰 Kikokotoo & Utabiri"])
+
+    with tab1:
+        col1, col2, col3 = st.columns(3)
+        with col1: timeframe = st.selectbox("**Timeframe:**", ["Daily", "Weekly", "Monthly"])
+        with col2: chart_type = st.selectbox("**Aina ya Chart:**", ["Candlestick", "Line", "Area"])
+        with col3: history_range = st.selectbox("**Historia:**", ["Zote", "Mwaka 1", "Miezi 6"])
+
+        d = stock_data.copy()
+        if history_range == "Mwaka 1": d = d.tail(252)
+        elif history_range == "Miezi 6": d = d.tail(126)
+
+        def resample(d, kind):
+            if kind == "Daily": return d.copy().reset_index(drop=True)
+            if kind == "Weekly": key = d["date"].dt.to_period("W")
+            else: key = d["date"].dt.to_period("M")
+            g = d.groupby(key)
+            out = pd.DataFrame({"date": g["date"].max(), "open": g["open"].first(), "high": g["high"].max(), "low": g["low"].min(), "close": g["close"].last(), "volume": g["volume"].sum(), "rsi_14": g["rsi_14"].last()})
+            return out.reset_index(drop=True).sort_values("date").reset_index(drop=True)
+
+        r = resample(d, timeframe)
+        r["lab"] = r["date"].dt.strftime("%d %b %y")
+
+        fig = make_subplots(rows=3, cols=1, shared_xaxes=True, vertical_spacing=0.03, row_heights=[0.6, 0.15, 0.25])
+        if chart_type == "Candlestick": fig.add_trace(go.Candlestick(x=r["lab"], open=r["open"], high=r["high"], low=r["low"], close=r["close"], increasing_line_color=UP, decreasing_line_color=DOWN), row=1, col=1)
+        elif chart_type == "Line": fig.add_trace(go.Scatter(x=r["lab"], y=r["close"], mode="lines", line=dict(color=ACCENT, width=2)), row=1, col=1)
+        else: fig.add_trace(go.Scatter(x=r["lab"], y=r["close"], mode="lines", fill="tozeroy", line=dict(color=ACCENT, width=2)), row=1, col=1)
+
+        fig.add_trace(go.Bar(x=r["lab"], y=r["volume"], marker_color=np.where(r["close"] >= r["open"], UP_A, DOWN_A), name="Volume"), row=2, col=1)
+        fig.add_trace(go.Scatter(x=r["lab"], y=r["rsi_14"], mode="lines", line=dict(color="#e040fb", width=2), name="RSI"), row=3, col=1)
+        
+        fig.update_xaxes(type="category", rangeslider_visible=False, gridcolor="#2a323d")
+        fig.update_yaxes(side="right", gridcolor="#2a323d")
+        fig.update_layout(paper_bgcolor=BG, plot_bgcolor=BG, font=dict(color=TXT), height=600, margin=dict(l=10, r=10, t=10, b=10))
+        st.plotly_chart(fig, use_container_width=True, config={"scrollZoom": True, "displaylogo": False})
+
+    with tab2:
+        st.markdown("### 💰 Kikokotoo cha Faida & Utabiri (Data Science)")
+        
+        col_c1, col_c2 = st.columns(2)
+        with col_c1: investment = st.number_input("Weka Kiasi Unachotaka Kuwekeza (TZS):", min_value=10000, value=1000000, step=100000)
+        with col_c2: period = st.selectbox("Muda wa Uwekezaji (Nyuma):", ["Miaka 2", "Mwaka 1", "Miezi 6", "Miezi 3"])
+
+        current_date = stock_data['date'].max()
+        current_price = stock_data['close'].iloc[-1]
+
+        if period == "Miaka 2": past_date = current_date - timedelta(days=730)
+        elif period == "Mwaka 1": past_date = current_date - timedelta(days=365)
+        elif period == "Miezi 6": past_date = current_date - timedelta(days=180)
+        else: past_date = current_date - timedelta(days=90)
+
+        past_data = stock_data[stock_data['date'] <= past_date]
+        if past_data.empty: past_price = stock_data['close'].iloc[0]; actual_past_date = stock_data['date'].iloc[0]
+        else: past_price = past_data['close'].iloc[-1]; actual_past_date = past_data['date'].iloc[-1]
+
+        cost_rate = 0.035; shares_bought = investment / past_price; cost_buying = investment * cost_rate; total_investment = investment + cost_buying
+        value_now = shares_bought * current_price; cost_selling = value_now * cost_rate; net_value = value_now - cost_selling
+        div_yield_est = 0.05; div_earned = investment * div_yield_est * (1 - 0.05); total_profit = (net_value + div_earned) - total_investment; profit_pct = (total_profit / total_investment) * 100
+
+        st.info(f"Ukinunua hisa hii kwa bei ya **TZS {past_price:,.2f}** tarehe **{actual_past_date.strftime('%d %b %Y')}**:")
+        st.write(f"- Umewekeza: **TZS {total_investment:,.2f}** (ikiwa na gharama za 3.5%)")
+        st.write(f"- Thamani ya hisa sasa (tarehe {current_date.strftime('%d %b %Y')}): **TZS {net_value:,.2f}**")
+        if total_profit > 0: st.success(f"Faida Kamili ya Nyuma: **TZS {total_profit:,.2f} (+{profit_pct:.2f}%)**")
+        else: st.error(f"Hasara Kamili ya Nyuma: **TZS {total_profit:,.2f} ({profit_pct:.2f}%)**")
+
+        st.markdown("---")
+        st.markdown("#### 🔮 Utabiri wa Miaka 1 hadi 10 (Monte Carlo Simulation)")
+        st.warning("""
+        **Tahadhari:** Utabiri huu unatumia uwezekano (Probabilities) na mwenendo wa nyuma. 
+        Ni **makadirio ya kihesabu (Data Science)** na **sio ushauri wa kifedha**. 
+        """)
+        
+        forecast_years = st.slider("Chagua Muda wa Uwekezaji (Miaka):", min_value=1, max_value=10, value=5)
+        
+        three_years_ago = current_date - timedelta(days=1095)
+        recent_data = stock_data[stock_data['date'] >= three_years_ago].copy()
+        
+        if len(recent_data) > 30:
+            recent_data['Daily_Return'] = recent_data['close'].pct_change()
+            recent_data = recent_data.dropna()
+            mean_return = recent_data['Daily_Return'].mean()
+            std_dev = recent_data['Daily_Return'].std()
+            
+            simulations = 1000
+            days_to_forecast = forecast_years * 252
+            final_values = []
+            
+            max_daily_return = 0.003
+            min_daily_return = -0.003
+            
+            for _ in range(simulations):
+                price_path = [current_price]
+                for _ in range(days_to_forecast):
+                    daily_ret = np.random.normal(mean_return, std_dev)
+                    daily_ret = max(min(daily_ret, max_daily_return), min_daily_return)
+                    price_path.append(price_path[-1] * (1 + daily_ret))
+                
+                final_price = price_path[-1]
+                div_earned_total = investment * ((1.05 ** forecast_years) - 1) * (1 - 0.05)
+                final_value = (shares_bought * final_price * (1 - cost_rate)) + div_earned_total - total_investment
+                final_values.append(final_value)
+                
+            final_values = np.array(final_values)
+            expected_profit = np.mean(final_values)
+            worst_case = np.percentile(final_values, 10)
+            best_case = np.percentile(final_values, 90)
+            
+            st.write(f"Kulingana na simulation za soko ({simulations} scenarios kwa miaka {forecast_years}):")
+            
+            col_r1, col_r2, col_r3 = st.columns(3)
+            with col_r1: st.metric(label="Wastani wa Faida", value=f"TZS {expected_profit:,.2f}")
+            with col_r2: st.metric(label="Hali Mbaya (10%)", value=f"TZS {worst_case:,.2f}")
+            with col_r3: st.metric(label="Hali Nzuri (10%)", value=f"TZS {best_case:,.2f}")
+
+elif page == "💼 Portfolio Yangu":
+    st.markdown('''<div class="main-header"><h1>💼 Portfolio Yangu (My Portfolio)</h1><p>Fuatilia hisa ulizonunua na uone faida/hasara yako.</p></div>''', unsafe_allow_html=True)
+
+    if not user_email:
+        st.warning("Tafadhali weka Email yako kwenye Sidebar (kushoto) ili kuona Portfolio yako.")
+    else:
+        with st.expander("➕ Ongeza Hisa Mpya Kwenye Portfolio"):
+            col_p1, col_p2, col_p3 = st.columns(3)
+            with col_p1: new_sym = st.selectbox("Chagua Hisa:", sorted(df_master['symbol'].unique().tolist()))
+            with col_p2: new_shares = st.number_input("Idadi ya Hisa:", min_value=1, value=100)
+            with col_p3: new_price = st.number_input("Bei ya Kununua (TZS):", min_value=1.0, value=1000.0)
+            
+            if st.button("Hifadhi kwenye Portfolio"):
+                try:
+                    supabase.table('user_portfolios').insert({
+                        "user_email": user_email,
+                        "symbol": new_sym,
+                        "shares_owned": new_shares,
+                        "buy_price": new_price
+                    }).execute()
+                    st.success(f"Hisa ya {new_sym} imeongezwa kwenye portfolio yako!")
+                    st.rerun()
+                except Exception as e:
+                    st.error(f"Kosa: {e}")
+
         try:
-            resp = http_get(url)
-            pdf = pdfplumber.open(BytesIO(resp.content))
-            rows = tsl_parse_text("\n".join(p.extract_text() or "" for p in pdf.pages))
-            if not date or not rows:
-                print(f"  [{i}/{len(new)}] ! imeshindwa ({date})")
-                continue
-            for s, d in rows.items():
-                data[(date, s)] = {"date": date, "symbol": s, **d}
+            res = supabase.table('user_portfolios').select("*").eq("user_email", user_email).execute()
+            portfolio_data = res.data
+            
+            if not portfolio_data:
+                st.info("Bado hujaongeza hisa yoyote kwenye portfolio yako.")
+            else:
+                df_port = pd.DataFrame(portfolio_data)
+                latest_prices = df_master.sort_values('date').groupby('symbol').tail(1)[['symbol', 'close']]
+                df_port = df_port.merge(latest_prices, on='symbol', how='left')
+                
+                df_port['Cost'] = df_port['shares_owned'] * df_port['buy_price']
+                df_port['Current_Value'] = df_port['shares_owned'] * df_port['close']
+                df_port['Profit'] = df_port['Current_Value'] - df_port['Cost']
+                df_port['Profit_%'] = (df_port['Profit'] / df_port['Cost']) * 100
+                
+                total_cost = df_port['Cost'].sum()
+                total_value = df_port['Current_Value'].sum()
+                total_profit = df_port['Profit'].sum()
+                total_pct = (total_profit / total_cost) * 100 if total_cost > 0 else 0
+
+                col_m1, col_m2, col_m3 = st.columns(3)
+                with col_m1: st.metric("Jumla ya Gharama", f"TZS {total_cost:,.2f}")
+                with col_m2: st.metric("Thamani ya Sasa", f"TZS {total_value:,.2f}")
+                with col_m3: 
+                    if total_profit > 0: st.metric("Faida/Hasara", f"TZS {total_profit:,.2f}", f"+{total_pct:.2f}%")
+                    else: st.metric("Faida/Hasara", f"TZS {total_profit:,.2f}", f"{total_pct:.2f}%", delta_color="inverse")
+
+                display_port = df_port[['symbol', 'shares_owned', 'buy_price', 'close', 'Current_Value', 'Profit_%']]
+                display_port.columns = ['Hisa', 'Idadi', 'Bei ya Kununua', 'Bei ya Sasa', 'Thamani ya Sasa', 'Faida (%)']
+                
+                st.dataframe(display_port.style.format({
+                    'Bei ya Kununua': '{:,.2f}', 'Bei ya Sasa': '{:,.2f}',
+                    'Thamani ya Sasa': '{:,.2f}', 'Faida (%)': '{:+.2f}%'
+                }).background_gradient(subset=['Faida (%)'], cmap='RdYlGn'), use_container_width=True)
+
+                st.markdown("### 🗑️ Futa Hisa kwenye Portfolio")
+                delete_id = st.selectbox("Chagua ID ya Hisa ya Kufuta:", df_port['id'].tolist())
+                if st.button("Futa Hisa hii"):
+                    supabase.table('user_portfolios').delete().eq('id', delete_id).execute()
+                    st.success("Hisa imefutwa!")
+                    st.rerun()
+
         except Exception as e:
-            print(f"  [{i}/{len(new)}] ! kosa: {e}")
-        time.sleep(1.0)
-    save_csv(TSL_FILE, data, TSL_FIELDS)
-    dates = sorted({d for d, _ in data})
-    if dates:
-        print(f"  tarehe: {dates[0]} -> {dates[-1]} | siku {len(dates)}")
+            st.error(f"Kosa la kusoma Portfolio: {e}")
 
+elif page == "🔎 Kichujio (Screener)":
+    st.markdown('''<div class="main-header"><h1>🔎 Kichujio cha Hisa (Screener)</h1><p>Chuja hisa zote za DSE kulingana na AI Score, RSI, na Fedha.</p></div>''', unsafe_allow_html=True)
 
-# ---------------- ARCHIVE.ORG: kila kitu cha zamani ----------------
-ARCHIVE_TO_YEAR = "2024"
-KEYWORDS = "market|report|price|daily|highlight|equit|trading|statistic"
-FALLBACK_PREFIXES = ["dse.co.tz/dse/market-report"]
-ARCHIVE_DONE = "data/archive_done.txt"
-ARCHIVE_DIAG = "data/archive_diagnostics.txt"
-MAX_ITEMS = 6000
-MAX_PDF_BYTES = 2_000_000
-SKIP_WORDS = ("annual", "brochure", "rule", "regulation", "prospectus", "financial", "form", "guideline",
-              "circular", "tender", "vacanc", "career")
-MONTHS = {m: i for i, m in enumerate(
-    ["january", "february", "march", "april", "may", "june", "july",
-     "august", "september", "october", "november", "december"], 1)}
-SYMBOL_OK = re.compile(r"^[A-Z][A-Z0-9\-\.]{1,12}$")
-DATE_PATTERNS = [
-    re.compile(r"(\d{1,2})(?:st|nd|rd|th)?[\s\-/,]+([A-Za-z]{3,9})\.?[\s\-/,]+(\d{4})"),
-    re.compile(r"([A-Za-z]{3,9})\.?\s+(\d{1,2})(?:st|nd|rd|th)?,?\s+(\d{4})"),
-]
+    latest_data = []
+    for sym in df_master['symbol'].unique():
+        sdf = df_master[df_master['symbol'] == sym].sort_values('date')
+        if len(sdf) > 0:
+            score, _, _ = analyze_stock(sdf)
+            sdf_with_vol = sdf[sdf['volume'] > 0]
+            last_trade_date = sdf_with_vol['date'].max() if not sdf_with_vol.empty else sdf['date'].max()
+            last = sdf.iloc[-1]
+            latest_data.append({'symbol': sym, 'close': last['close'], 'change': last['change'], 'pct': last['pct'], 'rsi_14': last['rsi_14'], 'volume': last['volume'], 'date': last_trade_date, 'ai_score': score})
+    
+    latest_df = pd.DataFrame(latest_data)
+    last_market_date = df_master['date'].max()
+    latest_df['days_since_trade'] = (last_market_date - latest_df['date']).dt.days
 
+    col1, col2, col3 = st.columns(3)
+    with col1: 
+        min_score = st.slider("**Kiwango cha Chini cha AI Score:**", 0, 100, 50)
+        rsi_filter = st.selectbox("**RSI Signal:**", ["Zote", "Oversold (<30)", "Overbought (>70)"])
+    with col2: min_turnover = st.number_input("**Kiasi cha Chini cha Fedha (TZS):**", min_value=0, value=5000000, step=1000000)
+    with col3: liquidity_filter = st.selectbox("**Uwezo wa Kufanya Biashara:**", ["Zote", "Zinazofanya biashara (Siku 5 zilizopita)"])
 
-def month_num(name):
-    name = name.lower()
-    for full, n in MONTHS.items():
-        if full == name or (len(name) >= 3 and full.startswith(name[:3]) and len(name) <= len(full)
-                            and full.startswith(name)):
-            return n
-    return None
+    filtered = latest_df.copy()
+    filtered = filtered[filtered['ai_score'] >= min_score]
+    if rsi_filter == "Oversold (<30)": filtered = filtered[filtered['rsi_14'] < 30]
+    elif rsi_filter == "Overbought (>70)": filtered = filtered[filtered['rsi_14'] > 70]
+    filtered['turnover'] = filtered['volume'] * filtered['close']
+    filtered = filtered[filtered['turnover'] >= min_turnover]
+    if liquidity_filter == "Zinazofanya biashara (Siku 5 zilizopita)": filtered = filtered[filtered['days_since_trade'] <= 5]
 
+    display_df = filtered.reindex(columns=['symbol', 'ai_score', 'close', 'change', 'pct', 'rsi_14', 'turnover', 'days_since_trade']).fillna(0)
+    display_df.columns = ['Hisa', 'AI Score', 'Bei', 'Mabadiliko (TZS)', 'Mabadiliko (%)', 'RSI', 'Fedha (TZS)', 'Siku Tangu Biashara']
+    display_df = display_df.sort_values('AI Score', ascending=False)
 
-def find_date(text, snap_day=None):
-    text = " ".join(text.split())
-    cands = []
-    for pat_i, pat in enumerate(DATE_PATTERNS):
-        for m in pat.finditer(text):
-            a, b, y = m.groups()
-            day, mon = (a, b) if pat_i == 0 else (b, a)
-            mn = month_num(mon)
-            if not mn or not day.isdigit():
-                continue
-            try:
-                dt = datetime(int(y), mn, int(day))
-            except ValueError:
-                continue
-            if 2008 <= dt.year <= 2026:
-                cands.append((m.start(), dt.strftime("%Y-%m-%d")))
-    m = re.search(r"(20\d\d)-(\d\d)-(\d\d)", text)
-    if m:
-        try:
-            datetime(int(m.group(1)), int(m.group(2)), int(m.group(3)))
-            cands.append((m.start(), "-".join(m.groups())))
-        except ValueError:
-            pass
-    for _, dt in sorted(cands):
-        if snap_day is None or dt.replace("-", "") <= snap_day:
-            return dt
-    return None
+    st.dataframe(display_df.style.format({'AI Score': '{:.0f}', 'Bei': '{:,.2f}', 'Mabadiliko (TZS)': '{:,.2f}', 'Mabadiliko (%)': '{:+.2f}%', 'RSI': '{:.1f}', 'Fedha (TZS)': '{:,.0f}'}).background_gradient(subset=['AI Score', 'Mabadiliko (%)'], cmap='RdYlGn'), use_container_width=True, height=600)
 
+elif page == "🌍 Habari za Soko":
+    st.markdown('''<div class="main-header"><h1>🌍 Habari za Soko (Market Pulse)</h1><p>Takwimu halisi za Uchumi (BOT) na Ripoti za Makampuni.</p></div>''', unsafe_allow_html=True)
 
-def map_header(head):
-    idx = {}
-    for i, h in enumerate(head):
-        if h.startswith(("prev", "previous")) and "clos" in h:
-            idx.setdefault("prev_close", i)
-        elif any(h.startswith(k) for k in ("company", "symbol", "counter", "security", "ticker")):
-            idx.setdefault("symbol", i)
-        elif h in ("closingprice", "closeprice", "close", "closing", "todayprice", "currentprice", "price"):
-            idx.setdefault("close", i)
-        elif h in ("open", "openingprice", "openprice", "opening"):
-            idx.setdefault("open", i)
-        elif h in ("high", "highprice", "dayhigh"):
-            idx.setdefault("high", i)
-        elif h in ("low", "lowprice", "daylow"):
-            idx.setdefault("low", i)
-        elif "volume" in h or h in ("vol", "quantity"):
-            idx.setdefault("volume", i)
-        elif "turnover" in h:
-            idx.setdefault("turnover", i)
-        elif h in ("deals", "trades", "noofdeals"):
-            idx.setdefault("deals", i)
-        elif h.startswith(("mcap", "marketcap")):
-            idx.setdefault("mcap", i)
-    return idx
+    st.markdown("<h4 style='color:white; margin-bottom: 15px;'>Viashiria vya Uchumi (BOT)</h4>", unsafe_allow_html=True)
+    
+    col_m1, col_m2, col_m3 = st.columns(3)
+    col_m4, col_m5, col_m6 = st.columns(3)
+    
+    keys = list(MACRO_INFO.keys())
+    vals = list(MACRO_INFO.values())
 
-
-def records_from_rows(table):
-    """table = orodha ya safu (orodha ya maandishi). Rudisha orodha ya dict."""
-    for hi in range(min(3, len(table))):
-        head = [re.sub(r"[^a-z]", "", (c or "").lower()) for c in table[hi]]
-        idx = map_header(head)
-        if "symbol" in idx and "close" in idx:
-            out = []
-            for row in table[hi + 1:]:
-                row = [(c or "").replace("\n", " ").strip() for c in row]
-                if len(row) <= max(idx.values()):
-                    continue
-                sym = row[idx["symbol"]].upper().strip()
-                if not SYMBOL_OK.match(sym) or sym in ("TOTAL", "COMPANY"):
-                    continue
-                rec = {"symbol": sym}
-                for k in COLS:
-                    rec[k] = num(row[idx[k]]) if k in idx else None
-                if rec["close"] is not None:
-                    out.append(rec)
-            return out
-    return []
-
-
-def html_records(html):
-    soup = BeautifulSoup(html, "html.parser")
-    recs = []
-    for tb in soup.find_all("table"):
-        rows = [[c.get_text(" ", strip=True) for c in tr.find_all(["th", "td"])] for tr in tb.find_all("tr")]
-        recs += records_from_rows(rows)
-    return soup.get_text(" ", strip=True), recs
-
-
-def pdf_records(content):
-    import pdfplumber
-    pdf = pdfplumber.open(BytesIO(content))
-    pages = pdf.pages[:8]
-    text = "\n".join((p.extract_text() or "") for p in pages[:2])
-    recs = []
-    for p in pages:
-        for tb in p.extract_tables():
-            recs += records_from_rows(tb)
-    return text, recs
-
-
-def cdx(params):
-    r = http_get(CDX, params=params)
-    if not r or not r.text.strip():
-        return None
-    try:
-        return r.json()[1:]
-    except ValueError:
-        return None
-
-
-def list_items():
-    base = [("matchType", "prefix"), ("output", "json"), ("from", "2009"), ("to", ARCHIVE_TO_YEAR),
-            ("filter", "statuscode:200")]
-    items = []
-    rows = cdx([("url", "dse.co.tz/"), *base, ("fl", "timestamp,original"), ("filter", "mimetype:text/html"),
-                ("filter", f"original:.*({KEYWORDS}).*"), ("collapse", "timestamp:8")])
-    if rows is None:
-        print("  ! kichujio cha CDX kimeshindwa, natumia orodha ya msingi")
-        rows = []
-        for pref in FALLBACK_PREFIXES:
-            rows += cdx([("url", pref), *base, ("fl", "timestamp,original"),
-                         ("filter", "mimetype:text/html"), ("collapse", "timestamp:8")]) or []
-    items += [("html", ts, o) for ts, o in rows]
-    print(f"  kurasa za HTML: {len(rows)}")
-    rows = cdx([("url", "dse.co.tz/"), *base, ("fl", "timestamp,original,length"),
-                ("filter", "mimetype:application/pdf"), ("collapse", "urlkey")]) or []
-    pdfs = []
-    for ts, o, ln in rows:
-        if any(w in o.lower() for w in SKIP_WORDS):
-            continue
-        if ln.isdigit() and int(ln) > MAX_PDF_BYTES:
-            continue
-        pdfs.append(("pdf", ts, o))
-    print(f"  PDF: {len(pdfs)} (kati ya {len(rows)})")
-    return items + pdfs
-
-
-def run_archive():
-    print("== Archive.org: kurasa na PDF zote za zamani ==")
-    os.makedirs("data", exist_ok=True)
-    done = set(open(ARCHIVE_DONE).read().split("\n")) if os.path.exists(ARCHIVE_DONE) else set()
-    items = list_items()
-    todo = [it for it in items if f"{it[1]} {it[2]}" not in done][:MAX_ITEMS]
-    print(f"Jumla: {len(items)} | zinazofuata: {len(todo)}")
-    if not todo:
-        print("  hakuna cha kufanya (kila kitu kimeshapitiwa); angalia data/archive_diagnostics.txt")
-        return
-    data = load_csv(DSE_FILE, ["date", "symbol"])
-    stats = {"html": Counter(), "pdf": Counter()}
-    samples = {"html": [], "pdf": []}
-    new_rows, new_dates = 0, set()
-
-    def flush():
-        save_csv(DSE_FILE, data, DSE_FIELDS)
-        open(ARCHIVE_DONE, "w").write("\n".join(sorted(done)))
-
-    for i, (kind, ts, orig) in enumerate(todo, 1):
-        if time.time() > DEADLINE:
-            print("Muda umeisha; endesha tena kuendelea.")
-            break
-        done.add(f"{ts} {orig}")
-        r = http_get(f"https://web.archive.org/web/{ts}id_/{orig}")
-        reason, text, recs = "haikupakuliwa", "", []
-        if r is not None:
-            try:
-                if kind == "pdf":
-                    if r.content.startswith(b"%PDF"):
-                        text, recs = pdf_records(r.content)
-                    else:
-                        reason = "si PDF"
-                else:
-                    text, recs = html_records(r.text)
-            except Exception as e:
-                reason = f"kosa la kusoma: {str(e)[:60]}"
-            date = find_date(text, ts[:8]) if recs else None
-            if recs and date:
-                for rec in recs:
-                    key = (date, rec["symbol"])
-                    row = data.get(key)
-                    if row is None:
-                        data[key] = {"date": date, **{k: ("" if rec.get(k) is None else rec[k])
-                                                      for k in ["symbol"] + COLS}}
-                        new_rows += 1
-                        new_dates.add(date)
-                    else:
-                        for k in COLS:
-                            if row.get(k, "") in ("", None) and rec.get(k) is not None:
-                                row[k] = rec[k]
-                stats[kind]["sawa"] += 1
-                reason = None
-            elif recs:
-                reason = "jedwali lipo, tarehe haipo"
-            elif reason == "haikupakuliwa":
-                reason = "hakuna jedwali la bei"
-        if reason:
-            stats[kind]["imeshindwa"] += 1
-            if len(samples[kind]) < 8:
-                samples[kind].append(f"{reason} | {ts} {orig}\n    {' '.join(text.split())[:250]}")
-        if i % 25 == 0:
-            flush()
-            print(f"  [{i}/{len(todo)}] html {dict(stats['html'])} | pdf {dict(stats['pdf'])} | safu mpya {new_rows}")
-        time.sleep(1.0)
-    flush()
-
-    all_dates = sorted({k[0] for k in data})
-    per_year = dict(sorted(Counter(x[:4] for x in all_dates).items()))
-    lines = [f"Imeandikwa: {datetime.now():%Y-%m-%d %H:%M}",
-             f"Tarehe zote kwenye dse_daily.csv: {all_dates[0] if all_dates else '-'} -> {all_dates[-1] if all_dates else '-'}"
-             f" | siku {len(all_dates)} | safu {len(data)}",
-             f"Siku kwa mwaka: {per_year}",
-             f"Run hii: safu mpya {new_rows}, siku mpya {len(new_dates)}",
-             f"HTML: {dict(stats['html'])} | PDF: {dict(stats['pdf'])}", "", "Mifano ya zilizoshindwa:"]
-    for kind in ("html", "pdf"):
-        lines += [f"[{kind}] {s}" for s in samples[kind]]
-    open(ARCHIVE_DIAG, "w", encoding="utf-8").write("\n".join(lines))
-    print("\n".join(lines[:5]))
-
-
-# ---------------- kuanzisha ----------------
-def main():
-    mode = sys.argv[1] if len(sys.argv) > 1 else "daily"
-    if mode == "backfill":
-        run_wayback()
-        run_tsl()
-        run_archive()
-    elif mode == "archive":
-        run_archive()
-    elif mode == "daily":
-        run_live()
-        run_tsl()
-    else:
-        print("Tumia: python dse_all.py daily   au   python dse_all.py backfill")
-
-
-if __name__ == "__main__":
-    main()
+    with col_m1: st.markdown(f'<div class="macro-card"><div class="macro-title">{keys[0]}</div><div class="macro-value">{vals[0]["val"]}</div><div style="font-size:10px; color:#8b949e;">{vals[0]["desc"]}</div></div>', unsafe_allow_html=True)
+    with col_m2: st.markdown(f'<div class="macro-card"><div class="macro-title">{keys[1]}</div><div class="macro-value">{vals[1]["val"]}</div><div style="font-size:10px; color:#8b949e;">{vals[1]["desc"]}</div></div>', unsafe_allow_html=True)
+    with col_m3: st.markdown(f'<div class="macro-card"><div class="macro-title">{keys[2]}</div><div class="macro-value">{vals[2]["val"]}</div><div style="font-size:10px; color:#8b949e;">{vals[2]["desc"]}</div></div>', unsafe_allow_html=True)
+    with col_m4: st.markdown(f'<div class="macro-card"><div class="macro-title">{keys[3]}</div><div class="macro-value">{vals[3]["val"]}</div><div style="font-size:10px; color:#8b949e;">{vals[3]["desc"]}</div></div>', unsafe_allow_html=True)
+    with col_m5: st.markdown(f'<div class="macro-card"><div class="macro-title">{keys[4]}</div><div class="macro-value">{vals[4]["val"]}</div><div style="font-size:10px; color:#8b949e;">{vals[4]["desc"]}</div></div>', unsafe_allow_html=True)
+    with col_m6: st.markdown(f'<div class="macro-card"><div class="macro-title">{keys[5]}</div><div class="macro-value">{vals[5]["val"]}</div><div style="font-size:10px; color:#8b949e;">{vals[5]["desc"]}</div></div>', unsafe_allow_html=True)
+    
+    st.markdown("<br>", unsafe_allow_html=True)
+    st.markdown("<h4 style='color:white; margin-bottom: 10px;'>Ripoti za Makampuni</h4>", unsafe_allow_html=True)
+    st.info("Hapa utaweka viungo (Links) vya ripoti za mwaka (Annual Reports) au taarifa za makampuni.")
+    
+    reports = {
+        "CRDB Annual Report 2023": "https://www.crdbbank.co.tz/investor-relations",
+        "NMB Annual Report 2023": "https://www.nmbbank.co.tz/investor-relations",
+        "Vodacom Annual Report 2023": "https://www.vodacom.co.tz/about-us/investor-relations"
+    }
+    for name, link in reports.items():
+        st.markdown(f"🔗 [{name}]({link})")
