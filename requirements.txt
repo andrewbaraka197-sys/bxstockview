@@ -2,4 +2,8 @@ selenium
 beautfulsoup4
 pandas
 numpy
+plotly
+scipy
+scikit-learn
+supabase
 
