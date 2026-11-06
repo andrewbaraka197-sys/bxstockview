@@ -1,9 +1,5 @@
-streamlit
+selenium
+beautfulsoup4
 pandas
 numpy
-plotly
-requests
-matplotlib
-scikit-learn
-supabase
 
