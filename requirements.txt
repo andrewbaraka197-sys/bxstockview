@@ -6,5 +6,4 @@ requests
 matplotlib
 scikit-learn
 supabase
-beautifulsoup4
-pdfplumber
+
