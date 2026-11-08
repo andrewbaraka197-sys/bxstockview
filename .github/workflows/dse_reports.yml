@@ -1,1 +1,34 @@
+name: DSE daily reports
 
+on:
+  schedule:
+    - cron: "0 16 * * 1-5"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install
+        run: pip install requests pdfplumber pandas beautifulsoup4
+
+      - name: Run script
+        run: python scripts/dse_reports.py
+        env:
+          LISTING_URL: "PASTE_LISTING_URL_HAPA"
+
+      - name: Commit data
+        run: |
+          git config user.name "github-actions"
+          git config user.email "actions@github.com"
+          git add data
+          git diff --cached --quiet || (git commit -m "update DSE data" && git push)
